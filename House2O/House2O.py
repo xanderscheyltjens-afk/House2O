@@ -15,7 +15,6 @@ def absorption(absorp_coeffs, d):
     absorbed_fraction = 1-np.exp(-absorp_coeffs*d)
     return absorbed_fraction
 
-
 def solar_spectrum(file_name):
     with open(f"{file_name}", 'r') as f:
         file = csv.reader(f)
@@ -40,7 +39,6 @@ def plot(x_data, y_data, log_scale=False):
     if log_scale==True:
         ax.loglog()
     ax.grid()
-
 
 if __name__=="__main__":
     absorption_wavelen, absorp_coeffs = absorption_coeffs("Absorption_coefficients_water.txt")
