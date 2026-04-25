@@ -1,0 +1,8 @@
+
+
+**********************************
+Welcome to SMARTS, version 2.9.5!              
+**********************************
+
+Program completed
+Press Enter to Continue.
