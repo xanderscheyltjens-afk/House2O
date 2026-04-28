@@ -60,21 +60,21 @@ The following spectral variables will be output to file: smarts295.ext.txt
 ====================================================================================================
 
 * SOLAR POSITION (deg.):
-    Zenith Angle (apparent) = 27.914  Azimuth (from North) =  172.97
+    Zenith Angle (apparent) = 29.065  Azimuth (from North) =  158.73
 
       RELATIVE OPTICAL MASSES:
-  - Rayleigh =  1.131
-  - Water Vapor =  1.132
-  - Ozone =  1.131
-  - NO2 =  1.132
-  - Aerosols =  1.132
+  - Rayleigh =  1.144
+  - Water Vapor =  1.144
+  - Ozone =  1.143
+  - NO2 =  1.144
+  - Aerosols =  1.144
 
   Results below are for this specific day:
- Year = 2024   Month =  6  Day = 21   Hour (LST) = 13.500   Day of Year = 173
+ Year = 2024   Month =  6  Day = 21   Hour (LST) = 13.000   Day of Year = 173
    In Universal Time:
-   Day (UT) = 21   Hour (UT) = 11.500
-   Julian Day =  2460483.000  Declination =  23.436 deg.  Radius vector = 1.01628   Equation of Time (min) =  -1.901
-   Local Apparent Time (or Solar Time):  11.762
+   Day (UT) = 21   Hour (UT) = 11.000
+   Julian Day =  2460483.000  Declination =  23.436 deg.  Radius vector = 1.01628   Equation of Time (min) =  -1.897
+   Local Apparent Time (or Solar Time):  11.262
 
 
 
@@ -112,11 +112,11 @@ The following spectral variables will be output to file: smarts295.ext.txt
 
 * ANGLES (deg.) FOR TILTED SURFACE CALCULATIONS: 
    Surface Tilt =  90.000   Surface Azimuth (from North) = 180.000
-   Incidence Angle =  62.314
+   Incidence Angle =  63.083
 
   Diffuse irradiance ratios (tilted plane/horizontal):
       0.5000  (isotropic approximate conversion--for reference)
-      0.6640  (anisotropic conversion model--used here)
+      0.6606  (anisotropic conversion model--used here)
 
 
 
@@ -136,13 +136,13 @@ Wavelength Range =  280.0 to 4000.0 nm;  Number of Wavelengths =  2002
 *** BROADBAND IRRADIANCES (W/m2):
 
 * DIRECT BEAM AT NORMAL INCIDENCE:
-  Extraterrestrial = 1306.04   Terrestrial =  901.28   Atmospheric Transmittance = 0.6901
+  Extraterrestrial = 1306.04   Terrestrial =  898.84   Atmospheric Transmittance = 0.6882
 
 * FOR THE HORIZONTAL PLANE:
-  Direct Beam =  796.41   Diffuse = 124.90   Global =  921.31   Clearness index, KT = 0.6961
+  Direct Beam =  785.65   Diffuse = 124.32   Global =  909.97   Clearness index, KT = 0.6875
   Diffuse irradiance origination details:
-   Sky diffuse = 107.63   Back-scattered diffuse =  17.27
+   Sky diffuse = 107.28   Back-scattered diffuse =  17.05
 
 * FOR THE TILTED PLANE: 
-  Direct Beam =  418.76   Sky Diffuse = 162.91   Ground Reflected =  92.13   Global =  581.67
+  Direct Beam =  406.91   Sky Diffuse = 161.29   Ground Reflected =  91.00   Global =  568.20
 

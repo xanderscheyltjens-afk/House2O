@@ -35,7 +35,7 @@ def absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irra
     common_wavelen = sun_wavelen
     if glass:
         # Converts k to absorption coefficients, This is not the clearest code but I wanna reuse this function :)
-        absorp_coeffs *= 4*np.pi/absorption_wavelen
+        absorp_coeffs *= 4*np.pi/(absorption_wavelen*10**9)
 
     alpha_interp = np.interp(sun_wavelen, absorption_wavelen, absorp_coeffs)
     d_eff = d/np.cos(aoi)
@@ -64,6 +64,27 @@ def reflection_loss(index_1, index_2, aoi, irradiance):
     new_irradiance = irradiance*T_tot
     return aot, new_irradiance
 
+def air_glass_water(glass_filename, aoi_glass, irradiance):
+    # Transition air to glass
+    index_air = 1
+    index_glass = 1.5168
+    aoi_water, irradiance = reflection_loss(index_1= index_air, index_2= index_glass, aoi=aoi_glass, irradiance=irradiance )
+    # Absorption glass
+    with open(glass_filename, 'r') as f:
+        file = csv.reader(f)
+        header = next(file)  
+        data = np.array(list(file), dtype='float64')
+    glass_wavelen = data[:, 0] #in micrometer
+    glass_wavelen *= 10**(-3) #Set to nanometer
+    absorption_coefficients_glass = data[:, 1] #in W/m^2/nm
+    common_wavelen_glass, absorbed_power_density_glass, absorbed_power_total_glass = absorbed_power_spectrum(glass_wavelen, absorption_coefficients_glass, sun_wavelen, irradiance, d=1, aoi= aoi_water, glass=True)
+    irradiance -= absorbed_power_density_glass
+    # Transition glass to water
+    index_water = 1.3325
+    aot, irradiance = reflection_loss(index_1=index_glass, index_2=index_water, aoi=aoi_water, irradiance=irradiance)
+    return irradiance, aot, absorbed_power_total_glass
+
+
 #-------Visualisation--------------------------------------------------------------
 def plot(x_data, y_data, log_scale=False):
     fig, ax = plt.subplots()
@@ -84,7 +105,7 @@ def plot_spectrum(spectrum, solar, title=None):
     ax.plot(wl, spectrum["poa_global"],      color="gold",   lw=2,   label="POA global (total)")
     ax.plot(wl, spectrum["poa_direct"],      color="orange", lw=1.5, label="POA direct")
     ax.plot(wl, spectrum["poa_sky_diffuse"], color="steelblue", lw=1.5, label="POA sky diffuse")
-    ax.plot(wl, spectrum["poa_ground_diff"], color="sienna",    lw=1.2, label="POA ground diffuse", ls="--")
+    ax.plot(wl, spectrum["poa_ground_diffuse"], color="sienna",    lw=1.2, label="POA ground diffuse", ls="--")
     ax.plot(wl, spectrum["dni_extra"],       color="gray",   lw=1,   label="Extraterrestrial", ls=":")
 
     # Mark major absorption bands
@@ -708,14 +729,14 @@ def compute_spectrum(
     poa_gnd = np.maximum(poa_glob - poa_dir - poa_dif, 0.0)
 
     spectrum = pd.DataFrame({
-        "wavelength_nm":   wl,
-        "dni_extra":       dni_extra,
-        "dhi":             dhi,
-        "dni":             dni,
-        "poa_direct":      poa_dir,
-        "poa_sky_diffuse": poa_dif,
-        "poa_ground_diff": poa_gnd,
-        "poa_global":      poa_glob,
+        "wavelength_nm":      wl,
+        "dni_extra":          dni_extra,
+        "dhi":                dhi,
+        "dni":                dni,
+        "poa_direct":         poa_dir,
+        "poa_sky_diffuse":    poa_dif,
+        "poa_ground_diffuse": poa_gnd,
+        "poa_global":         poa_glob,
     })
 
     return spectrum, solar
@@ -733,15 +754,16 @@ if __name__=="__main__":
     # Antwerp, Belgium — summer solstice, solar noon
     LAT, LON = 51.22, 4.40
     TZ = "Europe/Brussels"
-    DATETIME = "2024-06-21 13:30"    # local time (CEST = UTC+2, solar noon ≈ 13:30)
+    DATETIME = "2024-06-21 13:00"    # local time (CEST = UTC+2, solar noon ≈ 13:30)
 
     print(f"Computing spectrum for Antwerp, {DATETIME} CEST …")
+    surface_tilt = 90
     spectrum, solar = compute_spectrum(
         latitude=LAT,
         longitude=LON,
         datetime_input=DATETIME,
         tz=TZ,
-        surface_tilt=90,       # vertical window
+        surface_tilt=surface_tilt,       # vertical window
         surface_azimuth=180,   # south-facing
         # -- Atmospheric parameters (Belgian summer, typical) --
         precipitable_water=2.0,         # cm  — Belgium is fairly humid
@@ -764,31 +786,71 @@ if __name__=="__main__":
     fig1 = plot_spectrum(spectrum, solar)
     plt.show()
     sun_wavelen = spectrum["wavelength_nm"]
-    irradiance = spectrum["poa_global"]
+    #------ Import data for cloud modification factor (CMF) from PVGIS------------------------------
+    #Generate the correct format for the date and time
+    date, time = DATETIME.split(" ")
+    year, month, day = date.split("-")
+    hour, minute = time.split(":")
+
+    PVGIS_DATETIME = month + day + ":" + hour + minute
+    #Read file
+    PVGIS_file = r"C:\Users\xande\OneDrive\Documents\GitHub\House2O\House2O\tmy_51.222_4.401_2005_2023.csv"
+    with open(PVGIS_file, 'r') as f:
+        file = csv.reader(f)
+        PVGIS_data = np.array(list(file))
+    #Find the right row where our date and time are correct, we ignore the year since it's irrelevant
+    for idx, time in enumerate(PVGIS_data[:, 0]):
+        time = str(time)
+        if time[4:]==PVGIS_DATETIME:
+            PVGIS_index=idx
+    #Add a little check for if my numpy indexing was the other way around, if it's still here then I forgot to remove it
+    if PVGIS_index==None:
+        raise ValueError("Your indexing is wrong idiot")
+    # Let's now adjust the direct and diffuse spectra from out clear sky model generated by SMARTS
+    # We integrate the relvant spectra from SMARTS
+    DNI = np.trapz(spectrum["dni"], spectrum["wavelength_nm"])
+    DHI = np.trapz(spectrum["dhi"], spectrum["wavelength_nm"])
+    # And then divide by data for cloudy days to get CMF
+    direct_CMF = float(PVGIS_data[PVGIS_index, 4])/DNI
+    diffuse_CMF = float(PVGIS_data[PVGIS_index, 5])/DHI
+    # Then we just adjust all spectra for our object
+    irradiance_direct = spectrum["poa_direct"]*direct_CMF
+    irradiance_sky_diffuse = spectrum["poa_sky_diffuse"]*diffuse_CMF
+    irradiance_ground_diffuse = spectrum["poa_ground_diffuse"]*diffuse_CMF
+    # And also sum them to get the global spectrum for cloudy days
+    irradiance_global = irradiance_direct+irradiance_ground_diffuse+irradiance_sky_diffuse
+
     #------ Get absorption coeffients for water ----------------------------------------------
     absorption_wavelen, absorp_coeffs = absorption_coeffs(r"C:\Users\xande\OneDrive\Documents\GitHub\House2O\House2O\Absorption_coefficients_water.txt")
     plot(absorption_wavelen, absorp_coeffs, True)
     plt.show()
 
-    #------- Compute reflection losses and absorbed fraction-------------------------------
-    # Transition air to glass
+    #------- Compute reflection losses and absorbed fraction by glass-------------------------------
+    # We treat direct, sky and ground diffuse lighting seperately; starting with direct
     aoi_glass = solar["aoi"]
-    aoi_water, irradiance = reflection_loss(index_1=1, index_2= 1.5168, aoi=aoi_glass, irradiance=irradiance )
-    # Absorption by glass (needs to be implemented, not super hard tho once we have data)
     glass_filename = r"C:\Users\xande\OneDrive\Documents\GitHub\House2O\House2O\Rubin-lowiron.csv"
-    with open(f"{glass_filename}", 'r') as f:
-        file = csv.reader(f)
-        header = next(file)  
-        data = np.array(list(file), dtype='float64')
-    glass_wavelen = data[:, 0] #in micrometer
-    glass_wavelen *= 10**(-3) #Set to nanometer
-    absorption_coefficients_glass = data[:, 1] #in W/m^2/nm
-    common_wavelen_glass, absorbed_power_density_glass, absorbed_power_total_glass = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance, d=1, aoi= aoi_water)
-    irradiance -= absorbed_power_density_glass
-    # Transition glass to water
-    aot, irradiance = reflection_loss(index_1=1.5168, index_2= 1.3325, aoi=aoi_water, irradiance=irradiance )
-    # Absorption by water (what we want to know) -> needs adaptation for pathlength based on angle of incidence_water
-    common_wavelen, absorbed_power_density, absorbed_power_total = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance, d=15, aoi= aoi_water)
+    irradiance_direct, aot_direct, absorbed_power_total_glass_direct=air_glass_water(glass_filename=glass_filename, aoi_glass=aoi_glass, irradiance = irradiance_direct)
+    # Now we compute sky diffuse
+    aoi_sky_diffuse = 59.68-0.1388*surface_tilt+0.001497*surface_tilt**2 # This formula is from some paper I'm gonna add to the citations
+    irradiance_sky_diffuse, aot_sky, absorbed_power_total_glass_sky=air_glass_water(glass_filename=glass_filename, aoi_glass=aoi_sky_diffuse, irradiance = irradiance_sky_diffuse)
+    # And finally ground diffuse
+    aoi_ground_diffuse = 90-0.5788*surface_tilt+0.002693*surface_tilt**2 # Same paper as above
+    irradiance_ground_diffuse, aot_ground, absorbed_power_total_glass_ground=air_glass_water(glass_filename=glass_filename, aoi_glass=aoi_ground_diffuse, irradiance = irradiance_ground_diffuse)
+    #We compute the losses from glass absorption for more insight
+    absorbed_power_total_glass = absorbed_power_total_glass_direct+absorbed_power_total_glass_sky+absorbed_power_total_glass_ground
+
+    #---------- Compute the absorption by water (what we want) ---------------------------------
+    # I guess I'll keep the irradiance seperate for this too, although I'm not sure the angles are all correct and stuff
+    # Those angles work for reflection, but idk if it's useable to compute path length throuhg water
+    # Oh well, we did the same with the glass absportion, it's not like anyone has a better idea
+    common_wavelen, absorbed_power_density_direct, absorbed_power_total_direct = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_direct, d=15, aoi= aot_direct)
+    _,absorbed_power_density_sky, absorbed_power_total_sky = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_sky_diffuse, d=15, aoi= aot_sky)
+    _,absorbed_power_density_ground, absorbed_power_total_ground = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_ground_diffuse, d=15, aoi= aot_ground)
+    # Now add all of them together to get the global absorption spectrum and total absorbed power
+    absorbed_power_density = absorbed_power_density_direct+absorbed_power_density_sky+absorbed_power_density_ground
+    absorbed_power_total = absorbed_power_total_direct+absorbed_power_total_sky+absorbed_power_total_ground
+    # And then we see our total results!
     plot(common_wavelen, absorbed_power_density)
     plt.show()
+    print("Glass stole about: ", absorbed_power_total_glass, "W/m^2")
     print("The total absorbed power is: P_tot=", absorbed_power_total, "W/m^2")
