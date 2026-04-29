@@ -35,7 +35,7 @@ def absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irra
     common_wavelen = sun_wavelen
     if glass:
         # Converts k to absorption coefficients, This is not the clearest code but I wanna reuse this function :)
-        absorp_coeffs *= 4*np.pi/(absorption_wavelen*10**9)
+        absorp_coeffs = 4*np.pi/(absorption_wavelen*10**(-7))*absorp_coeffs #We need to convert from nm to cm to match units
 
     alpha_interp = np.interp(sun_wavelen, absorption_wavelen, absorp_coeffs)
     d_eff = d/np.cos(aoi)
@@ -64,7 +64,7 @@ def reflection_loss(index_1, index_2, aoi, irradiance):
     new_irradiance = irradiance*T_tot
     return aot, new_irradiance
 
-def air_glass_water(glass_filename, aoi_glass, irradiance):
+def air_glass_water(glass_filename, aoi_glass, irradiance): #Assumes a 5mm thick low iron glass pane 
     # Transition air to glass
     index_air = 1
     index_glass = 1.5168
@@ -75,9 +75,9 @@ def air_glass_water(glass_filename, aoi_glass, irradiance):
         header = next(file)  
         data = np.array(list(file), dtype='float64')
     glass_wavelen = data[:, 0] #in micrometer
-    glass_wavelen *= 10**(-3) #Set to nanometer
-    absorption_coefficients_glass = data[:, 1] #in W/m^2/nm
-    common_wavelen_glass, absorbed_power_density_glass, absorbed_power_total_glass = absorbed_power_spectrum(glass_wavelen, absorption_coefficients_glass, sun_wavelen, irradiance, d=1, aoi= aoi_water, glass=True)
+    glass_wavelen *= 10**(3) #Set to nanometer
+    extinction_coefficients_glass = data[:, 1] #in W/m^2/nm
+    common_wavelen_glass, absorbed_power_density_glass, absorbed_power_total_glass = absorbed_power_spectrum(glass_wavelen, extinction_coefficients_glass, sun_wavelen, irradiance, d=0.5, aoi= aoi_water, glass=True)
     irradiance -= absorbed_power_density_glass
     # Transition glass to water
     index_water = 1.3325
@@ -813,12 +813,23 @@ if __name__=="__main__":
     # And then divide by data for cloudy days to get CMF
     direct_CMF = float(PVGIS_data[PVGIS_index, 4])/DNI
     diffuse_CMF = float(PVGIS_data[PVGIS_index, 5])/DHI
+    # # Then we just adjust all spectra for our object
+    # irradiance_direct = spectrum["poa_direct"]*direct_CMF
+    # irradiance_sky_diffuse = spectrum["poa_sky_diffuse"]*diffuse_CMF
+    # irradiance_ground_diffuse = spectrum["poa_ground_diffuse"]*diffuse_CMF
+    # # And also sum them to get the global spectrum for cloudy days
+    # irradiance_global = irradiance_direct+irradiance_ground_diffuse+irradiance_sky_diffuse
+
+    # This was seemingly wrong but idk how. I'll keep using the old method for now
+    global_CMF = float(PVGIS_data[PVGIS_index, 3])/(DNI*np.cos(np.radians(solar["apparent_zenith"]))+DHI) #We project the direct DNI on the horizontal plane to estimate the horizontal contribution
     # Then we just adjust all spectra for our object
     irradiance_direct = spectrum["poa_direct"]*direct_CMF
     irradiance_sky_diffuse = spectrum["poa_sky_diffuse"]*diffuse_CMF
-    irradiance_ground_diffuse = spectrum["poa_ground_diffuse"]*diffuse_CMF
-    # And also sum them to get the global spectrum for cloudy days
-    irradiance_global = irradiance_direct+irradiance_ground_diffuse+irradiance_sky_diffuse
+    irradiance_global = spectrum["poa_global"]*global_CMF
+    #From the difference of global-direct-sky diffuse irradiances we find the remaining ground diffuse irradiance on a cloudy day
+    irradiance_ground_diffuse = irradiance_global-irradiance_direct-irradiance_sky_diffuse
+    total_power_cloudy = np.trapz(irradiance_global, spectrum["wavelength_nm"])
+    print(f"The total power with clouds is:{total_power_cloudy} W/m^2")
 
     #------ Get absorption coeffients for water ----------------------------------------------
     absorption_wavelen, absorp_coeffs = absorption_coeffs(r"C:\Users\xande\OneDrive\Documents\GitHub\House2O\House2O\Absorption_coefficients_water.txt")
