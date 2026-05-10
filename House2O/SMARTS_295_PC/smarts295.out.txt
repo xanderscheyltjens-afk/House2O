@@ -60,7 +60,7 @@ The following spectral variables will be output to file: smarts295.ext.txt
 ====================================================================================================
 
 * SOLAR POSITION (deg.):
-    Zenith Angle (apparent) = 31.407  Azimuth (from North) =  214.20
+    Zenith Angle (apparent) = 31.405  Azimuth (from North) =  214.20
 
       RELATIVE OPTICAL MASSES:
   - Rayleigh =  1.171
@@ -78,7 +78,7 @@ The following spectral variables will be output to file: smarts295.ext.txt
 
 
 
- CO2 Mixing Ratio (ppmv):  420.0
+ CO2 Mixing Ratio (ppmv):  422.5
 
 
 
@@ -86,7 +86,7 @@ The following spectral variables will be output to file: smarts295.ext.txt
 
     BrO       CH2O        CH4      ClNO3         CO        CO2       HNO2       HNO3        NH3
 
-0.2500E-05 0.3000E-03 0.1272E+01 0.1200E-03 0.8728E-01 0.3363E+03 0.1000E-03 0.3839E-03 0.1702E-03
+0.2500E-05 0.3000E-03 0.1272E+01 0.1200E-03 0.8728E-01 0.3383E+03 0.1000E-03 0.3839E-03 0.1702E-03
 
 
      NO        NO2        NO3         N2        N2O         O2         O3         O4        SO2
@@ -96,23 +96,23 @@ The following spectral variables will be output to file: smarts295.ext.txt
 
 
  Corrected total column abundances for all gases (atm-cm)
- with these realistic conditions: PRISTINE ATMOSPHERE     
+ with these realistic conditions: MODERATE POLLUTION      
 
     BrO       CH2O        CH4      ClNO3         CO        CO2       HNO2       HNO3        NH3
 
-0.2500E-05 0.0000E+00 0.1272E+01 0.1200E-03 0.7728E-01 0.3363E+03 0.1000E-05 0.1584E-02 0.1702E-03
+0.2500E-05 0.1000E-02 0.1302E+01 0.1200E-03 0.1223E+00 0.3383E+03 0.3000E-03 0.1584E-02 0.1702E-03
 
 
      NO        NO2        NO3         N2        N2O         O2         O3         O4        SO2
 
-0.3226E-03 0.2184E-03 0.1000E-05 0.3692E+06 0.2391E+00 0.1674E+06 0.3445E+00 0.1674E+06 0.1079E-03
+0.2032E-01 0.2218E-02 0.5500E-04 0.3692E+06 0.2391E+00 0.1674E+06 0.3505E+00 0.1674E+06 0.5108E-02
 
 
 
 
 * ANGLES (deg.) FOR TILTED SURFACE CALCULATIONS: 
    Surface Tilt =  90.000   Surface Azimuth (from North) = 180.000
-   Incidence Angle =  64.469
+   Incidence Angle =  64.470
 
   Diffuse irradiance ratios (tilted plane/horizontal):
       0.5000  (isotropic approximate conversion--for reference)
@@ -136,13 +136,13 @@ Wavelength Range =  280.0 to 4000.0 nm;  Number of Wavelengths =  2002
 *** BROADBAND IRRADIANCES (W/m2):
 
 * DIRECT BEAM AT NORMAL INCIDENCE:
-  Extraterrestrial = 1305.27   Terrestrial =  718.10   Atmospheric Transmittance = 0.5502
+  Extraterrestrial = 1305.27   Terrestrial =  713.13   Atmospheric Transmittance = 0.5463
 
 * FOR THE HORIZONTAL PLANE:
-  Direct Beam =  612.89   Diffuse = 223.59   Global =  836.48   Clearness index, KT = 0.6324
+  Direct Beam =  608.66   Diffuse = 218.04   Global =  826.70   Clearness index, KT = 0.6250
   Diffuse irradiance origination details:
-   Sky diffuse = 202.52   Back-scattered diffuse =  21.07
+   Sky diffuse = 197.71   Back-scattered diffuse =  20.33
 
 * FOR THE TILTED PLANE: 
-  Direct Beam =  309.51   Sky Diffuse = 227.22   Ground Reflected =  83.65   Global =  536.73
+  Direct Beam =  307.34   Sky Diffuse = 222.75   Ground Reflected =  82.67   Global =  530.09
 

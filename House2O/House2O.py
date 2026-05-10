@@ -553,10 +553,11 @@ def smartsAll(CMNT, ISPR, SPR, ALTIT, HEIGHT, LATIT, IATMOS, ATMOS, RH, TAIR, SE
 # These are typical mid-latitude values.
 #Has been replaced with actual data from CAMS
 DEFAULTS = {
-    "precipitable_water":      1.42,   # cm    — atmospheric water vapour
+    "precipitable_water":      1.42,   # cm     — atmospheric water vapour
     "ozone":                   0.344,  # atm-cm — total column ozone
     "aerosol_turbidity_500nm": 0.1,    # —      — aerosol optical depth at 500 nm
-    "ground_albedo":           0.25,   # —      — ground reflectance (grass ~0.25)
+    "CO2":                     422.5,  # ppmv   - volumetric concentration of CO2 -> median of 2024 from NOAA
+    "ground_albedo":           0.20,   # —      — ground reflectance (grass between 0,17 and 0,26)
     "surface_pressure":        101325, # Pa     — standard sea-level pressure
 }
 
@@ -571,6 +572,7 @@ def compute_spectrum(
     precipitable_water=DEFAULTS["precipitable_water"],
     ozone=DEFAULTS["ozone"],
     aerosol_turbidity_500nm=DEFAULTS["aerosol_turbidity_500nm"],
+    CO2 = DEFAULTS["CO2"],
     ground_albedo=DEFAULTS["ground_albedo"],
     surface_pressure=DEFAULTS["surface_pressure"],
     smarts_path=None,
@@ -713,14 +715,14 @@ def compute_spectrum(
         IALT='0',                             # no altitude correction to ozone column
         AbO3=str(ozone),
 
-        # Card 6/6a: gas absorption — IGAS=0, ILOAD=1 → pristine atmosphere defaults
+        # Card 6/6a: gas absorption — IGAS=0, ILOAD=3 → moderate pollution atmosphere defaults
         IGAS='0',
-        ILOAD='1',
+        ILOAD='3',
         ApCH2O='', ApCH4='', ApCO='', ApHNO2='', ApHNO3='',
         ApNO='', ApNO2='', ApNO3='', ApO3='', ApSO2='',
 
         # Card 7/7a: CO2 and extraterrestrial spectrum (0 = Gueymard 2004)
-        qCO2='420.0',
+        qCO2=CO2,
         ISPCTR='0',
 
         # Card 8: aerosol model (tropospheric/rural, humidity dependent)
@@ -826,20 +828,57 @@ def previous_main_file():
 
     print(f"Computing spectrum for Antwerp, {DATETIME} CEST …")
     surface_tilt = 90
+     #------ Import data from PVGIS------------------------------
+    # Generate the correct format for the date and time
+    date, time = DATETIME.split(" ")
+    _, month, day = date.split("-")
+    hour, _ = time.split(":")
+    PVGIS_DATETIME = month + day + ":" + hour + "00"
+
+    # Read file
+    PVGIS_file = BASE_DIR + r"\tmy_51.222_4.401_2005_2023.csv"
+    with open(PVGIS_file, 'r') as f:
+        file = csv.reader(f)
+        PVGIS_data = np.array(list(file))
+
+    # Find the right row where our date and time are correct, we ignore the year
+    for idx, time in enumerate(PVGIS_data[:, 0]):
+        time = str(time)
+        if time[4:]==PVGIS_DATETIME:
+            PVGIS_index=idx
+
+    # We read all of the info for our chosen date and time into their own variables
+    PVGIS_results = {
+    "temperature":      float(PVGIS_data[PVGIS_index, 1]), #in Celsius
+    "relative_humidity":float(PVGIS_data[PVGIS_index, 2]),#in percent
+    "GHI":              float(PVGIS_data[PVGIS_index, 3]), #in W/m^2
+    "DNI":              float(PVGIS_data[PVGIS_index, 4]), #in W/m^2
+    "DHI":              float(PVGIS_data[PVGIS_index, 5]), #in W/m^2
+    "IR_radiation":     float(PVGIS_data[PVGIS_index, 6]), #in W/m^2
+    "windspeed10m":     float(PVGIS_data[PVGIS_index, 7]), #in meters/second
+    "wind_direction10m":float(PVGIS_data[PVGIS_index, 8]), #in degrees
+    "surface_pressure": float(PVGIS_data[PVGIS_index, 9]), #in Pascal
+    }
+
+    #Get the atmospheric data for H20, O3 and aerosol turbity at 500nm
+    atmosphere_data = get_atmospheric_params(DATETIME)
+    # We compute the clear-sky spectrum
+    TZ = "Europe/Brussels"
     spectrum, solar = compute_spectrum(
         latitude=LAT,
         longitude=LON,
         datetime_input=DATETIME,
         tz=TZ,
-        surface_tilt=surface_tilt,       # vertical window
-        surface_azimuth=180,   # south-facing
+        surface_tilt=surface_tilt,      # vertical window
+        surface_azimuth=180,            # south-facing
         # -- Atmospheric parameters (Belgian summer, typical) --
-        precipitable_water=2.0,         # cm  — Belgium is fairly humid
-        ozone=0.340,                    # atm-cm
-        aerosol_turbidity_500nm=0.12,   # slightly urban
-        ground_albedo=0.20,
-        surface_pressure=101325,
-        smarts_path= os.environ.get("SMARTSPATH", BASE_DIR + r"\SMARTS_295_PC")
+        precipitable_water=atmosphere_data['precipitable_water'],
+        ozone=atmosphere_data['ozone'],
+        aerosol_turbidity_500nm=atmosphere_data['aerosol_turbidity_500nm'],  
+        CO2 = DEFAULTS["CO2"],
+        ground_albedo=DEFAULTS["ground_albedo"],
+        surface_pressure=PVGIS_results["surface_pressure"],
+        smarts_path= BASE_DIR + r"\SMARTS_295_PC"
     )
 
     if solar["sun_above_horizon"]:
@@ -976,10 +1015,11 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt
         surface_tilt=surface_tilt,      # vertical window
         surface_azimuth=180,            # south-facing
         # -- Atmospheric parameters (Belgian summer, typical) --
-        precipitable_water=atmosphere_data['precipitable_water'],         # cm  — Belgium is fairly humid
-        ozone=atmosphere_data['ozone'],                    # atm-cm
-        aerosol_turbidity_500nm=atmosphere_data['aerosol_turbidity_500nm'],   # slightly urban
-        ground_albedo=0.20,
+        precipitable_water=atmosphere_data['precipitable_water'],
+        ozone=atmosphere_data['ozone'],
+        aerosol_turbidity_500nm=atmosphere_data['aerosol_turbidity_500nm'],  
+        CO2 = DEFAULTS["CO2"],
+        ground_albedo=DEFAULTS["ground_albedo"],
         surface_pressure=PVGIS_results["surface_pressure"],
         smarts_path= BASE_DIR + r"\SMARTS_295_PC"
     )
@@ -1049,7 +1089,7 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt
 
 #--------Test-environment----------------------------------------------------------------
 if __name__=="__main__":
-    #previous_main_file()
-    general_use(print_details=True)
+    previous_main_file()
+    #general_use(print_details=True)
 
     
