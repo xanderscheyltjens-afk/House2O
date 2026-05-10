@@ -9,9 +9,33 @@ from numpy import deg2rad
 import pandas as pd
 import matplotlib.ticker as ticker
 import pvlib
+import cdsapi
+import xarray as xr
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+#--------Get atmospheric data from EAC4 (used only once)------------------------------------
+def retrieve_data_EAC4():
+    c = cdsapi.Client(
+        url= "https://ads.atmosphere.copernicus.eu/api",
+        key= "fb283860-d6ff-4369-b79d-e1d896238d77"
+        )
+    for year in range(2024, 2025):
+        c.retrieve(
+            'cams-global-reanalysis-eac4',
+            {
+                'variable': [
+                    'total_column_ozone',
+                    'total_column_water_vapour',
+                    'total_aerosol_optical_depth_550nm',
+                ],
+                'date': f'{year}-01-01/{year}-12-31',
+                'time': ['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00'],
+                'format': 'netcdf',
+                'area': [52, 4, 51, 5],
+            },
+            f'eac4_antwerp_{year}.nc'
+        )
 
 #--------Reads external data------------------------------------------------------
 def absorption_coeffs(file):
@@ -32,6 +56,48 @@ def solar_spectrum(file_name):
         wavelen = data[:, 0] #in nanometer
         irradiance = data[:, 1] #in W/m^2/nm
     return wavelen, irradiance #No longer in use after switching to SMARTS
+
+# ── Load once at startup ───────────────────────────────────────────────────────
+ds = xr.open_mfdataset('eac4_antwerp_*.nc', combine='by_coords')
+YEAR_MIN = int(ds.valid_time.dt.year.min())
+YEAR_MAX = int(ds.valid_time.dt.year.max())
+
+def get_atmospheric_params(datetime_input):
+    """
+    Look up SMARTS atmospheric inputs from the pre-loaded EAC4 dataset.
+    Selects the nearest available 3-hourly timestep.
+    """
+    t = pd.Timestamp(datetime_input)
+
+    # Strip timezone for xarray (EAC4 times are UTC naive)
+    if t.tzinfo is not None:
+        t = t.tz_convert('UTC').tz_localize(None)
+
+    # Clamp year to dataset range (handles TMY jumping years)
+    if not (YEAR_MIN <= t.year <= YEAR_MAX):
+        clamped_year = max(YEAR_MIN, min(YEAR_MAX, t.year))
+        t = t.replace(year=clamped_year)
+
+    # Select nearest timestep and nearest latitude point to Antwerp (51.22°N)
+    row = ds.sel(valid_time=t, latitude=51.22, longitude=4.5,
+                 method='nearest')
+
+    # Total column ozone: kg/m² → atm-cm
+    ozone_kg = float(row['gtco3'].values)
+    ozone_atm_cm = ozone_kg / 2.1415e-2
+
+    # Precipitable water: kg/m² → cm
+    water_kg = float(row['tcwv'].values)
+    precipitable_water_cm = water_kg * 0.1
+
+    # AOD at 550nm — dimensionless
+    aod_550 = float(row['aod550'].values)
+
+    return {
+        'ozone':                   ozone_atm_cm,
+        'precipitable_water':      precipitable_water_cm,
+        'aerosol_turbidity_500nm': aod_550,
+    }
 
 #-------Calculates reflection and absorption and stuff-----------------------------
 def absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance, d, aoi, glass=False):
@@ -484,8 +550,8 @@ def smartsAll(CMNT, ISPR, SPR, ALTIT, HEIGHT, LATIT, IATMOS, ATMOS, RH, TAIR, SE
     return data
 
 # ── Default atmospheric parameters ──────────────────────────────────────────── # This is also AI -> we will find our own values :)
-# These are typical mid-latitude values. For a more accurate simulation of a
-# specific location and season, use measured data from CAMS or similar sources.
+# These are typical mid-latitude values.
+#Has been replaced with actual data from CAMS
 DEFAULTS = {
     "precipitable_water":      1.42,   # cm    — atmospheric water vapour
     "ozone":                   0.344,  # atm-cm — total column ozone
@@ -629,7 +695,7 @@ def compute_spectrum(
         # Card 2/2a: pressure — ISPR=1 means we supply SPR (mbar), ALTIT (km), HEIGHT (km)
         ISPR='1',
         SPR=str(surface_pressure / 100.0),   # Pa → mbar
-        ALTIT='0.0',                          # sea level; adjust for elevated sites (km)
+        ALTIT='0.013',                          # sea level; adjust for elevated sites (km)
         HEIGHT='0',
         LATIT=str(latitude),
 
@@ -654,7 +720,7 @@ def compute_spectrum(
         ApNO='', ApNO2='', ApNO3='', ApO3='', ApSO2='',
 
         # Card 7/7a: CO2 and extraterrestrial spectrum (0 = Gueymard 2004)
-        qCO2='0.0',
+        qCO2='420.0',
         ISPCTR='0',
 
         # Card 8: aerosol model (tropospheric/rural, humidity dependent)
@@ -898,6 +964,8 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt
     "surface_pressure": float(PVGIS_data[PVGIS_index, 9]), #in Pascal
     }
 
+    #Get the atmospheric data for H20, O3 and aerosol turbity at 500nm
+    atmosphere_data = get_atmospheric_params(DATETIME)
     # We compute the clear-sky spectrum
     TZ = "Europe/Brussels"
     spectrum, solar = compute_spectrum(
@@ -908,9 +976,9 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt
         surface_tilt=surface_tilt,      # vertical window
         surface_azimuth=180,            # south-facing
         # -- Atmospheric parameters (Belgian summer, typical) --
-        precipitable_water=2.0,         # cm  — Belgium is fairly humid
-        ozone=0.340,                    # atm-cm
-        aerosol_turbidity_500nm=0.12,   # slightly urban
+        precipitable_water=atmosphere_data['precipitable_water'],         # cm  — Belgium is fairly humid
+        ozone=atmosphere_data['ozone'],                    # atm-cm
+        aerosol_turbidity_500nm=atmosphere_data['aerosol_turbidity_500nm'],   # slightly urban
         ground_albedo=0.20,
         surface_pressure=PVGIS_results["surface_pressure"],
         smarts_path= BASE_DIR + r"\SMARTS_295_PC"
