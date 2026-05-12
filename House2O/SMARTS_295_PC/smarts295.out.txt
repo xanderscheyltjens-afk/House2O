@@ -60,7 +60,7 @@ The following spectral variables will be output to file: smarts295.ext.txt
 ====================================================================================================
 
 * SOLAR POSITION (deg.):
-    Zenith Angle (apparent) = 31.405  Azimuth (from North) =  214.20
+    Zenith Angle (apparent) = 31.407  Azimuth (from North) =  214.20
 
       RELATIVE OPTICAL MASSES:
   - Rayleigh =  1.171
@@ -112,7 +112,7 @@ The following spectral variables will be output to file: smarts295.ext.txt
 
 * ANGLES (deg.) FOR TILTED SURFACE CALCULATIONS: 
    Surface Tilt =  90.000   Surface Azimuth (from North) = 180.000
-   Incidence Angle =  64.470
+   Incidence Angle =  64.469
 
   Diffuse irradiance ratios (tilted plane/horizontal):
       0.5000  (isotropic approximate conversion--for reference)
@@ -136,13 +136,13 @@ Wavelength Range =  280.0 to 4000.0 nm;  Number of Wavelengths =  2002
 *** BROADBAND IRRADIANCES (W/m2):
 
 * DIRECT BEAM AT NORMAL INCIDENCE:
-  Extraterrestrial = 1305.27   Terrestrial =  713.13   Atmospheric Transmittance = 0.5463
+  Extraterrestrial = 1305.27   Terrestrial =  713.12   Atmospheric Transmittance = 0.5463
 
 * FOR THE HORIZONTAL PLANE:
-  Direct Beam =  608.66   Diffuse = 218.04   Global =  826.70   Clearness index, KT = 0.6250
+  Direct Beam =  608.64   Diffuse = 218.03   Global =  826.67   Clearness index, KT = 0.6250
   Diffuse irradiance origination details:
    Sky diffuse = 197.71   Back-scattered diffuse =  20.33
 
 * FOR THE TILTED PLANE: 
-  Direct Beam =  307.34   Sky Diffuse = 222.75   Ground Reflected =  82.67   Global =  530.09
+  Direct Beam =  307.36   Sky Diffuse = 222.75   Ground Reflected =  82.67   Global =  530.11
 

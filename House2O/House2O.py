@@ -970,7 +970,7 @@ def previous_main_file():
     print("Glass stole about: ", absorbed_power_total_glass, "W/m^2")
     print("The total absorbed power is: P_tot=", absorbed_power_total, "W/m^2")
 
-def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt=90, print_details=False): # The default date is VERY IMPORTANT ;)
+def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt=90, water_thickness=10, print_details=False): # The default date is VERY IMPORTANT ;)
     #------ Import data from PVGIS------------------------------
     # Generate the correct format for the date and time
     date, time = DATETIME.split(" ")
@@ -1042,7 +1042,6 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt
     # And then divide by data for cloudy days to get CMF
     direct_CMF = PVGIS_results["DNI"]/SMARTS_DNI
     diffuse_CMF = PVGIS_results["DHI"]/SMARTS_DHI
-
     # Check if this method is , otherwise use previous (in comments of old main file)
     global_CMF = float(PVGIS_data[PVGIS_index, 3])/(SMARTS_DNI*np.cos(np.radians(solar["apparent_zenith"]))+SMARTS_DHI) #We project the direct DNI on the horizontal plane to estimate the horizontal contribution
     # Then we just adjust all spectra for our object
@@ -1073,9 +1072,9 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt
     # Get absorption coefficients water
     absorption_wavelen, absorp_coeffs = absorption_coeffs(BASE_DIR + r"\Absorption_coefficients_water.txt")
     #Compute the absorption of sky/ground diffuse and direct sunlight seperately
-    common_wavelen, absorbed_power_density_direct, absorbed_power_total_direct = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_direct, d=15, aoi= aot_direct,)
-    _,absorbed_power_density_sky, absorbed_power_total_sky = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_sky_diffuse, d=15, aoi= aot_sky)
-    _,absorbed_power_density_ground, absorbed_power_total_ground = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_ground_diffuse, d=15, aoi= aot_ground)
+    common_wavelen, absorbed_power_density_direct, absorbed_power_total_direct = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_direct, d=water_thickness, aoi= aot_direct,)
+    _,absorbed_power_density_sky, absorbed_power_total_sky = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_sky_diffuse, d=water_thickness, aoi= aot_sky)
+    _,absorbed_power_density_ground, absorbed_power_total_ground = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_ground_diffuse, d=water_thickness, aoi= aot_ground)
     # Now add all of them together to get the global absorption spectrum and total absorbed power
     absorbed_power_density = absorbed_power_density_direct+absorbed_power_density_sky+absorbed_power_density_ground
     absorbed_power_total = absorbed_power_total_direct+absorbed_power_total_sky+absorbed_power_total_ground
@@ -1089,7 +1088,7 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt
 
 #--------Test-environment----------------------------------------------------------------
 if __name__=="__main__":
-    previous_main_file()
-    #general_use(print_details=True)
+    #previous_main_file()
+    general_use(print_details=True)
 
     
