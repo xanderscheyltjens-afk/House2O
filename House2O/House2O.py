@@ -2,15 +2,40 @@
 #Authors: Mona Soors, Matti Cornille, Vincent Audenaert, Daan Grupping, Anis Dhewaju and Xander Scheyltjens
 #Last updated: 18/04/2026
 import numpy as np
+import os
 import csv
 import matplotlib.pyplot as plt
-from numpy.core.umath import deg2rad
+from numpy import deg2rad
 import pandas as pd
 import matplotlib.ticker as ticker
 import pvlib
-import os
+import cdsapi
+import xarray as xr
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+#--------Get atmospheric data from EAC4 (used only once)------------------------------------
+def retrieve_data_EAC4():
+    c = cdsapi.Client(
+        url= "https://ads.atmosphere.copernicus.eu/api",
+        key= "fb283860-d6ff-4369-b79d-e1d896238d77"
+        )
+    for year in range(2024, 2025):
+        c.retrieve(
+            'cams-global-reanalysis-eac4',
+            {
+                'variable': [
+                    'total_column_ozone',
+                    'total_column_water_vapour',
+                    'total_aerosol_optical_depth_550nm',
+                ],
+                'date': f'{year}-01-01/{year}-12-31',
+                'time': ['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00'],
+                'format': 'netcdf',
+                'area': [52, 4, 51, 5],
+            },
+            f'eac4_antwerp_{year}.nc'
+        )
 
 #--------Reads external data------------------------------------------------------
 def absorption_coeffs(file):
@@ -18,19 +43,61 @@ def absorption_coeffs(file):
     #I'm just gonna use the full path. Change this if you try to run the code. Anywhare I use a path you need to give it the right one
     # here = os.path.dirname(os.path.abspath(__file__))
     # filepath = os.path.join(here, file)
-    data = np.genfromtxt(file, skip_header=5)
+    data = np.genfromtxt(f"{file}", skip_header=5)
     wavelen = data[:, 0] #in nanometer
     absorp_coeffs = data[:,1] #in cm^-1
     return wavelen, absorp_coeffs
 
 def solar_spectrum(file_name):
-    with open(file_name, 'r') as f:
+    with open(f"{file_name}", 'r') as f:
         file = csv.reader(f)
         header = next(file)  
         data = np.array(list(file), dtype='float64')
         wavelen = data[:, 0] #in nanometer
         irradiance = data[:, 1] #in W/m^2/nm
     return wavelen, irradiance #No longer in use after switching to SMARTS
+
+# ── Load once at startup ───────────────────────────────────────────────────────
+ds = xr.open_mfdataset('eac4_antwerp_*.nc', combine='by_coords')
+YEAR_MIN = int(ds.valid_time.dt.year.min())
+YEAR_MAX = int(ds.valid_time.dt.year.max())
+
+def get_atmospheric_params(datetime_input):
+    """
+    Look up SMARTS atmospheric inputs from the pre-loaded EAC4 dataset.
+    Selects the nearest available 3-hourly timestep.
+    """
+    t = pd.Timestamp(datetime_input)
+
+    # Strip timezone for xarray (EAC4 times are UTC naive)
+    if t.tzinfo is not None:
+        t = t.tz_convert('UTC').tz_localize(None)
+
+    # Clamp year to dataset range (handles TMY jumping years)
+    if not (YEAR_MIN <= t.year <= YEAR_MAX):
+        clamped_year = max(YEAR_MIN, min(YEAR_MAX, t.year))
+        t = t.replace(year=clamped_year)
+
+    # Select nearest timestep and nearest latitude point to Antwerp (51.22°N)
+    row = ds.sel(valid_time=t, latitude=51.22, longitude=4.5,
+                 method='nearest')
+
+    # Total column ozone: kg/m² → atm-cm
+    ozone_kg = float(row['gtco3'].values)
+    ozone_atm_cm = ozone_kg / 2.1415e-2
+
+    # Precipitable water: kg/m² → cm
+    water_kg = float(row['tcwv'].values)
+    precipitable_water_cm = water_kg * 0.1
+
+    # AOD at 550nm — dimensionless
+    aod_550 = float(row['aod550'].values)
+
+    return {
+        'ozone':                   ozone_atm_cm,
+        'precipitable_water':      precipitable_water_cm,
+        'aerosol_turbidity_500nm': aod_550,
+    }
 
 #-------Calculates reflection and absorption and stuff-----------------------------
 def absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance, d, aoi, glass=False):
@@ -483,13 +550,14 @@ def smartsAll(CMNT, ISPR, SPR, ALTIT, HEIGHT, LATIT, IATMOS, ATMOS, RH, TAIR, SE
     return data
 
 # ── Default atmospheric parameters ──────────────────────────────────────────── # This is also AI -> we will find our own values :)
-# These are typical mid-latitude values. For a more accurate simulation of a
-# specific location and season, use measured data from CAMS or similar sources.
+# These are typical mid-latitude values.
+#Has been replaced with actual data from CAMS
 DEFAULTS = {
-    "precipitable_water":      1.42,   # cm    — atmospheric water vapour
+    "precipitable_water":      1.42,   # cm     — atmospheric water vapour
     "ozone":                   0.344,  # atm-cm — total column ozone
     "aerosol_turbidity_500nm": 0.1,    # —      — aerosol optical depth at 500 nm
-    "ground_albedo":           0.25,   # —      — ground reflectance (grass ~0.25)
+    "CO2":                     422.5,  # ppmv   - volumetric concentration of CO2 -> median of 2024 from NOAA
+    "ground_albedo":           0.20,   # —      — ground reflectance (grass between 0,17 and 0,26)
     "surface_pressure":        101325, # Pa     — standard sea-level pressure
 }
 
@@ -504,6 +572,7 @@ def compute_spectrum(
     precipitable_water=DEFAULTS["precipitable_water"],
     ozone=DEFAULTS["ozone"],
     aerosol_turbidity_500nm=DEFAULTS["aerosol_turbidity_500nm"],
+    CO2 = DEFAULTS["CO2"],
     ground_albedo=DEFAULTS["ground_albedo"],
     surface_pressure=DEFAULTS["surface_pressure"],
     smarts_path=None,
@@ -628,7 +697,7 @@ def compute_spectrum(
         # Card 2/2a: pressure — ISPR=1 means we supply SPR (mbar), ALTIT (km), HEIGHT (km)
         ISPR='1',
         SPR=str(surface_pressure / 100.0),   # Pa → mbar
-        ALTIT='0.0',                          # sea level; adjust for elevated sites (km)
+        ALTIT='0.013',                          # sea level; adjust for elevated sites (km)
         HEIGHT='0',
         LATIT=str(latitude),
 
@@ -646,14 +715,14 @@ def compute_spectrum(
         IALT='0',                             # no altitude correction to ozone column
         AbO3=str(ozone),
 
-        # Card 6/6a: gas absorption — IGAS=0, ILOAD=1 → pristine atmosphere defaults
+        # Card 6/6a: gas absorption — IGAS=0, ILOAD=3 → moderate pollution atmosphere defaults
         IGAS='0',
-        ILOAD='1',
+        ILOAD='3',
         ApCH2O='', ApCH4='', ApCO='', ApHNO2='', ApHNO3='',
         ApNO='', ApNO2='', ApNO3='', ApO3='', ApSO2='',
 
         # Card 7/7a: CO2 and extraterrestrial spectrum (0 = Gueymard 2004)
-        qCO2='0.0',
+        qCO2=CO2,
         ISPCTR='0',
 
         # Card 8: aerosol model (tropospheric/rural, humidity dependent)
@@ -759,20 +828,57 @@ def previous_main_file():
 
     print(f"Computing spectrum for Antwerp, {DATETIME} CEST …")
     surface_tilt = 90
+     #------ Import data from PVGIS------------------------------
+    # Generate the correct format for the date and time
+    date, time = DATETIME.split(" ")
+    _, month, day = date.split("-")
+    hour, _ = time.split(":")
+    PVGIS_DATETIME = month + day + ":" + hour + "00"
+
+    # Read file
+    PVGIS_file = BASE_DIR + r"\tmy_51.222_4.401_2005_2023.csv"
+    with open(PVGIS_file, 'r') as f:
+        file = csv.reader(f)
+        PVGIS_data = np.array(list(file))
+
+    # Find the right row where our date and time are correct, we ignore the year
+    for idx, time in enumerate(PVGIS_data[:, 0]):
+        time = str(time)
+        if time[4:]==PVGIS_DATETIME:
+            PVGIS_index=idx
+
+    # We read all of the info for our chosen date and time into their own variables
+    PVGIS_results = {
+    "temperature":      float(PVGIS_data[PVGIS_index, 1]), #in Celsius
+    "relative_humidity":float(PVGIS_data[PVGIS_index, 2]),#in percent
+    "GHI":              float(PVGIS_data[PVGIS_index, 3]), #in W/m^2
+    "DNI":              float(PVGIS_data[PVGIS_index, 4]), #in W/m^2
+    "DHI":              float(PVGIS_data[PVGIS_index, 5]), #in W/m^2
+    "IR_radiation":     float(PVGIS_data[PVGIS_index, 6]), #in W/m^2
+    "windspeed10m":     float(PVGIS_data[PVGIS_index, 7]), #in meters/second
+    "wind_direction10m":float(PVGIS_data[PVGIS_index, 8]), #in degrees
+    "surface_pressure": float(PVGIS_data[PVGIS_index, 9]), #in Pascal
+    }
+
+    #Get the atmospheric data for H20, O3 and aerosol turbity at 500nm
+    atmosphere_data = get_atmospheric_params(DATETIME)
+    # We compute the clear-sky spectrum
+    TZ = "Europe/Brussels"
     spectrum, solar = compute_spectrum(
         latitude=LAT,
         longitude=LON,
         datetime_input=DATETIME,
         tz=TZ,
-        surface_tilt=surface_tilt,       # vertical window
-        surface_azimuth=180,   # south-facing
+        surface_tilt=surface_tilt,      # vertical window
+        surface_azimuth=180,            # south-facing
         # -- Atmospheric parameters (Belgian summer, typical) --
-        precipitable_water=2.0,         # cm  — Belgium is fairly humid
-        ozone=0.340,                    # atm-cm
-        aerosol_turbidity_500nm=0.12,   # slightly urban
-        ground_albedo=0.20,
-        surface_pressure=101325,
-        smarts_path=BASE_DIR + r"\SMARTS_295_PC"
+        precipitable_water=atmosphere_data['precipitable_water'],
+        ozone=atmosphere_data['ozone'],
+        aerosol_turbidity_500nm=atmosphere_data['aerosol_turbidity_500nm'],  
+        CO2 = DEFAULTS["CO2"],
+        ground_albedo=DEFAULTS["ground_albedo"],
+        surface_pressure=PVGIS_results["surface_pressure"],
+        smarts_path= BASE_DIR + r"\SMARTS_295_PC"
     )
 
     if solar["sun_above_horizon"]:
@@ -864,7 +970,7 @@ def previous_main_file():
     print("Glass stole about: ", absorbed_power_total_glass, "W/m^2")
     print("The total absorbed power is: P_tot=", absorbed_power_total, "W/m^2")
 
-def general_use(LAT=51.222, LON=4.401, DATETIME="2024-03-27 15:00", surface_tilt=90, print_details=False): # The default date is VERY IMPORTANT ;)
+def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt=90, water_thickness=10, print_details=False): # The default date is VERY IMPORTANT ;)
     #------ Import data from PVGIS------------------------------
     # Generate the correct format for the date and time
     date, time = DATETIME.split(" ")
@@ -873,7 +979,7 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-03-27 15:00", surface_tilt
     PVGIS_DATETIME = month + day + ":" + hour + "00"
 
     # Read file
-    PVGIS_file =  BASE_DIR + r"\tmy_51.222_4.401_2005_2023.csv"
+    PVGIS_file = BASE_DIR + r"\tmy_51.222_4.401_2005_2023.csv"
     with open(PVGIS_file, 'r') as f:
         file = csv.reader(f)
         PVGIS_data = np.array(list(file))
@@ -897,6 +1003,8 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-03-27 15:00", surface_tilt
     "surface_pressure": float(PVGIS_data[PVGIS_index, 9]), #in Pascal
     }
 
+    #Get the atmospheric data for H20, O3 and aerosol turbity at 500nm
+    atmosphere_data = get_atmospheric_params(DATETIME)
     # We compute the clear-sky spectrum
     TZ = "Europe/Brussels"
     spectrum, solar = compute_spectrum(
@@ -907,10 +1015,11 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-03-27 15:00", surface_tilt
         surface_tilt=surface_tilt,      # vertical window
         surface_azimuth=180,            # south-facing
         # -- Atmospheric parameters (Belgian summer, typical) --
-        precipitable_water=2.0,         # cm  — Belgium is fairly humid
-        ozone=0.340,                    # atm-cm
-        aerosol_turbidity_500nm=0.12,   # slightly urban
-        ground_albedo=0.20,
+        precipitable_water=atmosphere_data['precipitable_water'],
+        ozone=atmosphere_data['ozone'],
+        aerosol_turbidity_500nm=atmosphere_data['aerosol_turbidity_500nm'],  
+        CO2 = DEFAULTS["CO2"],
+        ground_albedo=DEFAULTS["ground_albedo"],
         surface_pressure=PVGIS_results["surface_pressure"],
         smarts_path= BASE_DIR + r"\SMARTS_295_PC"
     )
@@ -933,7 +1042,6 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-03-27 15:00", surface_tilt
     # And then divide by data for cloudy days to get CMF
     direct_CMF = PVGIS_results["DNI"]/SMARTS_DNI
     diffuse_CMF = PVGIS_results["DHI"]/SMARTS_DHI
-
     # Check if this method is , otherwise use previous (in comments of old main file)
     global_CMF = float(PVGIS_data[PVGIS_index, 3])/(SMARTS_DNI*np.cos(np.radians(solar["apparent_zenith"]))+SMARTS_DHI) #We project the direct DNI on the horizontal plane to estimate the horizontal contribution
     # Then we just adjust all spectra for our object
@@ -964,9 +1072,9 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-03-27 15:00", surface_tilt
     # Get absorption coefficients water
     absorption_wavelen, absorp_coeffs = absorption_coeffs(BASE_DIR + r"\Absorption_coefficients_water.txt")
     #Compute the absorption of sky/ground diffuse and direct sunlight seperately
-    common_wavelen, absorbed_power_density_direct, absorbed_power_total_direct = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_direct, d=15, aoi= aot_direct,)
-    _,absorbed_power_density_sky, absorbed_power_total_sky = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_sky_diffuse, d=15, aoi= aot_sky)
-    _,absorbed_power_density_ground, absorbed_power_total_ground = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_ground_diffuse, d=15, aoi= aot_ground)
+    common_wavelen, absorbed_power_density_direct, absorbed_power_total_direct = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_direct, d=water_thickness, aoi= aot_direct,)
+    _,absorbed_power_density_sky, absorbed_power_total_sky = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_sky_diffuse, d=water_thickness, aoi= aot_sky)
+    _,absorbed_power_density_ground, absorbed_power_total_ground = absorbed_power_spectrum(absorption_wavelen, absorp_coeffs, sun_wavelen, irradiance_ground_diffuse, d=water_thickness, aoi= aot_ground)
     # Now add all of them together to get the global absorption spectrum and total absorbed power
     absorbed_power_density = absorbed_power_density_direct+absorbed_power_density_sky+absorbed_power_density_ground
     absorbed_power_total = absorbed_power_total_direct+absorbed_power_total_sky+absorbed_power_total_ground
@@ -975,7 +1083,12 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-03-27 15:00", surface_tilt
         print("The total absorbed power is: P_tot=", absorbed_power_total, "W/m^2")
     return PVGIS_results, absorbed_power_density, absorbed_power_total 
 
+# Using this general_use function, next we can try to find the optimal angle slope our window 
+# in order to collect the most solar energy possible to warm up our room later
+
 #--------Test-environment----------------------------------------------------------------
 if __name__=="__main__":
     #previous_main_file()
-    general_use(DATETIME="2024-06-21 15:00",print_details=True)
+    general_use(print_details=True)
+
+    
