@@ -63,75 +63,96 @@ def run_thermal_simulation():
 
 
     # Dimensions.
-    V_in = 51.52        # Volume of the house interior      # Calculated (still needs an extra check)
-    V_wat = 1           # Volume of the water compartment   # Assumption, (need to get data still)
-    V_basin_cold = 1    # Volume of the cold water basin    # Assumption, (need to get data still)
-    V_basin_hot = 1     # Volume of the hot water basin     # Assumption, (need to get data still)
+    V_in = 51.52        # Volume of the house interior     
+    V_wat = 1.015       # Volume of the water compartment   
+    V_basin = 4.19    # Volume of the cold water basin    
 
-    A_collector = 8.38  # Surface area of the absorber      # Calculated (still needs an extra check)
+    A_collector = 10.15  # Surface area of the absorber
     A_walls = 51.52     # Surface area of the walls         # Calculated (still needs an extra check)
-    A_in_wat = 8.38     # only steep window
-    A_ground = 16       # Surface area of the ground        # Assumption
-    A_floor = 16        # Surface area of the floor         # Assumption
-    A_basin_cold = 1    # Surface area of the cold basin    # Assumption
-    A_basin_hot = 1     # Surface area of the hot basin     # Assumption
+    A_in_wat = 10.15     # only steep window
+    A_ground = 16       # Surface area of the ground
+    A_floor = 16        # Surface area of the floor
+    A_basin = 12.57    # Surface area of the cold basin    # Assumption
+    A_fa = 4.88         # surface area of the waterfall, m², Found in 6.2
+    A_iso = 16
 
-    d_floor = 0.2       # Thickness of the floor            # Assumption
-    d_basin_cold = 0.05 # Thickness of the cold basin       # Assumption
-    d_basin_hot = 0.05  # Thickness of the hot basin        # Assumption
+    d_iso = 1
     d_walls = 0.2
     d_ground = 1
-
+    d_basin = 1
 
     # Assuming pumps keep water mass constant per compartment we can calculate thermal masses as if they were static volumes of water.
     C_in = V_in * rho_air * c_p_air                 # Thermal mass of the house interior
     C_wat = V_wat * rho_wat * c_p_wat               # Thermal mass of the water compartment (window)
-    C_basin_cold = V_basin_cold * rho_wat * c_p_wat # Thermal mass of the cold water basin
-    C_basin_hot = V_basin_hot * rho_wat * c_p_wat   # Thermal mass of the hot water basin
+    C_basin = V_basin * rho_wat * c_p_wat   # Thermal mass of the hot water basin
     C_floor = 10**6 #Temporary
     C_ground = 10**6 #Temporary
+    C_iso = 10**6
+    C_fa = 10**6
+    C_walls = 10**6
 
     # Convection Coefficients (W/m2.K)
     # h_out is according to Gemini: 10 + 4v , thus calculating per step in loop
     h_in = 10
+    h_walls = 10
+    h_fa = 3 # section 6.2
     h_floor = 10
-    h_basin_cold = 10
 
     # Conduction Coefficients (W/m2.K)
-    k_walls = 0.03
+    k_iso = 1
     k_ground = 1
+    k_walls = 1
     # Radiation Coefficients (W/m2.K)
-    epsilon = 1       # Emissivity
+    epsilon_w_in = 1       # Emissivity
+    epsilon_w_out = 1       # Emissivity
+    epsilon_fa = 1       # Emissivity
+    epsilon_walls = 1       # Emissivity
+    epsilon_floor = 1       # Emissivity
+
     # advection coefficients (W/m2.K)
+    
+    # Pump capacities (This will need to go to a dynamic system.)
+    m_dot_pump = 0.001  # Mass flow rate of cold water (kg/s)
+    m_dot_floor = 0.001
+
+    # Constants for the waterfall
+    L_v = 2.45e+6 # Latent heat, J/kg, found in 6.2
+    M_water = 0.018 # Molar mass water, kg/mol, found in 6.2
+    R = 8.314 # Gas constant, J/mol*K, found in 6.2
+    A_ant = 8.07131 # Constant A in Antoine equation, found in 6.2
+    B_ant = 1730.63 # Constant B in Antoine equation, found in 6.2
+    C_ant = 233.426 - 273.15 # Constant C in Antoine equation, found in 6.2, convert for use with Kelvin
 
     # 6. Simulation Setup
     dt = 3600  # Time step = 1 hour
     T_in = np.zeros(hours)
     T_wat = np.zeros(hours)
-    T_basin_cold = np.zeros(hours)
-    T_basin_hot = np.zeros(hours)
+    T_basin = np.zeros(hours)
     T_ground = np.zeros(hours)
     T_floor = np.zeros(hours)
-    
-    # Pump capacities (This will need to go to a dynamic system.)
-    m_dot_pump_cold = 0.001  # Mass flow rate of cold water (kg/s)
-    m_dot_pump_hot = 0.001   # Mass flow rate of hot water (kg/s)
-    m_dot_floor = 0.001      # Mass flow rate through the floor (kg/s)
+    T_iso = np.zeros(hours)
+    T_fa = np.zeros(hours)
+    T_walls = np.zeros(hours)
 
     # Initial conditions (K),  Needs update.
-    T_in[0] = 273.15 +20.0
-    T_wat[0] = 273.15 +30.0
-    T_basin_cold[0] = 273.15 + 15.0
-    T_basin_hot[0] = 273.15 + 40.0
-    T_ground[0] = 273.15 + 10.0
-    T_floor[0] = 273.15 + 25.0
+    T_in[0] = 273.15 + 20
+    T_wat[0] = 273.15 + 20
+    T_basin[0] = 273.15 + 20
+    T_ground[0] = 273.15 + 20
+    T_floor[0] = 273.15 + 20
+    T_iso[0] = 273.15 + 20
+    T_fa[0] = 273.15 + 20
+    T_walls[0] = 273.15 + 20
+
 
     current_T_in = T_in[0]
     current_T_wat = T_wat[0]
-    current_T_basin_cold = T_basin_cold[0]
-    current_T_basin_hot = T_basin_hot[0]
+    current_T_basin = T_basin[0]
     current_T_ground = T_ground[0]
     current_T_floor = T_floor[0]
+    current_T_iso = T_iso[0]
+    current_T_fa = T_fa[0]
+    current_T_walls = T_walls[0]
 
 
     # 7. Simulation Loop (Euler Integration)
@@ -139,80 +160,109 @@ def run_thermal_simulation():
         current_T_out = t_out_series[i] + 273.15 # Need kelvin for (T^4-T^4)
         h_out = 1#0# + 4 * wind_speed_series[i] # Update h_out based on current wind speed
         if T_in[i] > 273.15 + 30:
-            P_wat_in = 0
+            P_sun = 0
         elif T_in[i] > 273.15 + 20:
-            P_wat_in = power_per_m2_series[i] * (273.15 + 30 - T_in[i])/10
+            P_sun = power_per_m2_series[i] * (273.15 + 30 - T_in[i])/10
         else:
             # Calculate incoming power (W/m²) based on current hour
-            P_wat_in = power_per_m2_series[i]
+            P_sun = power_per_m2_series[i]
         
         # Heat flows between compartments (Watts)
-        for _ in range(60): # Sub-iterations for better stability
+        for _ in range(3600): # Sub-iterations for better stability
+            # Calculations for the waterfall:
+            if current_T_in < 293.15:
+                m_dot_evap = 0
+            else:
+                p_sat_fa = (10**(A_ant - (B_ant / (C_ant+current_T_fa)))) * 133.322  #Antoines formula, 133.322 converts mmhg -> Pa
+                p_sat_in = (10**(A_ant - (B_ant / (C_ant+current_T_in)))) * 133.322  #Antoines formula, 133.322 converts mmhg -> Pa
+                c_fa = p_sat_fa * M_water / (R * current_T_fa) # Ideal gas law waterfall
+                c_in = p_sat_in * M_water / (R * current_T_in) # Ideal gas law room
+                m_dot_evap = h_fa * A_fa * (c_fa - c_in)/ (rho_air * c_p_air)
+
+
             # Temperature changes
             dT_wat = A_collector * (
-                P_wat_in + 
+                P_sun + 
                 h_in * (current_T_in-current_T_wat) +
                 h_out * (current_T_out - current_T_wat) + 
-                sigma * epsilon * (current_T_in**4 - current_T_wat**4) +
-                sigma * epsilon * (current_T_out**4 - current_T_wat**4)) + (
-                m_dot_pump_cold * c_p_wat * (current_T_basin_cold - current_T_wat) +
-                m_dot_pump_hot * c_p_wat * (current_T_basin_hot - current_T_wat) )
+                sigma * epsilon_w_in * (current_T_in**4 - current_T_wat**4) +
+                sigma * epsilon_w_out * (current_T_out**4 - current_T_wat**4)) + (
+                m_dot_pump * c_p_wat * (current_T_basin - current_T_wat) +
+                m_dot_evap * L_v )
             
             dT_in = A_in_wat * (
                 h_in * (current_T_wat - current_T_in) +
-                sigma * epsilon * (current_T_wat**4 - current_T_in**4)) \
-                + (
-                k_walls * A_walls * (current_T_out - current_T_in)/d_walls +
-                k_ground * A_ground * (current_T_ground - current_T_in)/d_ground) \
+                sigma * epsilon_w_in * (current_T_wat**4 - current_T_in**4)) \
+                + A_fa * (
+                h_fa * (current_T_fa - current_T_in) +
+                sigma * epsilon_fa * (current_T_fa**4 - current_T_in**4))\
+                + A_walls * (
+                h_walls * (current_T_walls - current_T_in) +
+                sigma * epsilon_walls * (current_T_walls**4 - current_T_in**4))\
                 + A_floor * (
                 h_floor * (current_T_floor - current_T_in) +
-                sigma * epsilon * (current_T_floor**4 - current_T_in**4)) \
-                + h_basin_cold * A_basin_cold * (current_T_basin_cold - current_T_in) + \
-                sigma * epsilon * A_basin_cold * (current_T_basin_cold**4 - current_T_in**4)
+                sigma * epsilon_floor * (current_T_floor**4 - current_T_in**4)    
+                )
+            
+            dT_walls = A_walls * (
+                h_walls * (current_T_in - current_T_walls) +
+                h_walls * (current_T_out - current_T_walls) +
+                sigma * epsilon_walls * (current_T_in**4 - current_T_walls**4) +
+                sigma * epsilon_walls * (current_T_out**4 - current_T_walls**4) +
+                k_walls / d_walls * (current_T_in - current_T_walls) +
+                k_walls / d_walls * (current_T_out - current_T_walls)
+            )
 
-            dT_floor = m_dot_floor * c_p_wat * (current_T_basin_hot - current_T_floor) +\
+            dT_fa = m_dot_pump * c_p_wat * (current_T_basin - current_T_fa) +\
+                h_fa * A_fa * (current_T_in - current_T_fa) +\
+                sigma * epsilon_fa * (current_T_in**4 - current_T_fa**4) +\
+                - m_dot_evap * L_v
+
+            dT_floor = m_dot_floor * c_p_wat * (current_T_basin - current_T_floor) +\
                 A_floor * (
                 h_floor * (current_T_in - current_T_floor) +
-                sigma * epsilon * (current_T_in**4 - current_T_floor**4) +
-                k_ground * (current_T_ground - current_T_floor)/d_floor)
+                sigma * epsilon_floor * (current_T_in**4 - current_T_floor**4) +
+                k_iso * (current_T_iso - current_T_floor)/d_iso)
+            
+            dT_iso = k_iso * A_iso / d_iso * (current_T_floor + current_T_ground - 2 * current_T_iso)
+            
+            dT_ground = k_ground * A_ground / d_ground * (current_T_iso + current_T_basin - 2 * current_T_ground)
 
-            dT_basin_hot = m_dot_pump_hot * c_p_wat * (current_T_wat - current_T_basin_hot) +\
-                m_dot_floor * c_p_wat * (current_T_floor - current_T_basin_hot) +\
-                k_ground * A_basin_hot * (current_T_ground - current_T_basin_hot)/d_basin_hot
-            
-            dT_basin_cold =  m_dot_pump_cold * c_p_wat * (current_T_wat - current_T_basin_cold) +\
-                h_basin_cold * A_basin_cold * (current_T_in - current_T_basin_cold) +\
-                sigma * epsilon * A_basin_cold * (current_T_in**4 - current_T_basin_cold**4) +\
-                k_ground * A_basin_cold * (current_T_ground - current_T_basin_cold)/d_basin_cold
-            
-            dT_ground = k_ground * (
-                A_ground * (current_T_in - current_T_ground)/d_ground +
-                A_floor * (current_T_floor - current_T_ground)/d_floor +
-                A_basin_cold * (current_T_basin_cold - current_T_ground)/d_basin_cold +
-                A_basin_hot * (current_T_basin_hot - current_T_ground)/d_basin_hot
-            )
-            current_T_wat += dT_wat * dt / (C_wat * 60)
-            current_T_in += dT_in * dt / (C_in * 60)
-            current_T_floor += dT_floor * dt / (C_floor * 60)
-            current_T_basin_hot += dT_basin_hot * dt / (C_basin_hot * 60)
-            current_T_basin_cold += dT_basin_cold * dt / (C_basin_cold * 60)
-            current_T_ground += dT_ground * dt / (C_ground * 60)
+            dT_basin = m_dot_pump * c_p_wat * (current_T_wat - current_T_basin) +\
+                m_dot_floor * c_p_wat * (current_T_floor - current_T_basin) +\
+                m_dot_pump * c_p_wat * (current_T_fa - current_T_basin) +\
+                k_ground * A_basin / d_basin * (current_T_ground - current_T_basin) 
+
+            current_T_wat += dT_wat * dt / (C_wat * 3600)
+            current_T_in += dT_in * dt / (C_in * 3600)
+            current_T_floor += dT_floor * dt / (C_floor * 3600)
+            current_T_basin += dT_basin * dt / (C_basin * 3600)
+            current_T_ground += dT_ground * dt / (C_ground * 3600)
+            current_T_iso += dT_iso * dt / (C_iso * 3600)
+            current_T_fa += dT_fa * dt / (C_fa * 3600)
+            current_T_walls += dT_walls * dt / (C_walls * 3600)
 
         T_in[i+1] = current_T_in
         T_wat[i+1] = current_T_wat
         T_floor[i+1] = current_T_floor
-        T_basin_hot[i+1] = current_T_basin_hot
-        T_basin_cold[i+1] = current_T_basin_cold
+        T_basin[i+1] = current_T_basin
         T_ground[i+1] = current_T_ground
+        T_iso[i+1] = current_T_iso
+        T_fa[i+1] = current_T_fa
+        T_walls[i+1] = current_T_walls
+
+
     #
     # Restore temperatures to Celsius 
     #
     T_in -= 273.15
     T_wat -= 273.15
     T_floor -= 273.15
-    T_basin_hot -= 273.15
-    T_basin_cold -= 273.15
+    T_basin -= 273.15
     T_ground -= 273.15
+    T_iso -= 273.15
+    T_fa -= 273.15
+    T_walls -= 273.15
 
 
     # ---------------------------------------------------------
@@ -247,35 +297,53 @@ def run_thermal_simulation():
     print(f"Avg Diff (Inside vs Out): +{avg_diff:.2f} °C")
     print("------------------------------------\n")
 
-    # 9. Plot the results 
-    plt.figure(figsize=(14, 7))
-    plt.plot(df_sim['datetime'], t_out_series, label='Outside Temp', color='blue', alpha=0.5)
-    plt.plot(df_sim['datetime'], T_in, label='Inside Temp', color='green')
-    plt.plot(df_sim['datetime'], T_wat, label='Water Temp', color='red')
-    plt.plot(df_sim['datetime'], T_floor, label='Floor Temp', color='orange')
-    plt.plot(df_sim['datetime'], T_basin_hot, label='Basin Hot Temp', color='purple')
-    plt.plot(df_sim['datetime'], T_basin_cold, label='Basin Cold Temp', color='brown')
-    plt.plot(df_sim['datetime'], T_ground, label='Ground Temp', color='gray')
+    # 9. Plot the results with interactive checkboxes
+    fig, ax = plt.subplots(figsize=(14, 8))
+    plt.subplots_adjust(left=0.25) # Make room on the left for checkboxes
 
-    # Create a string for the text box on the plot
+    # Store lines in a dictionary to access them in the toggle function
+    lines = {
+        'Outside Temp': ax.plot(df_sim['datetime'], t_out_series, label='Outside Temp', color='blue', alpha=0.4)[0],
+        'Inside Temp':  ax.plot(df_sim['datetime'], T_in, label='Inside Temp', color='green', linewidth=2)[0],
+        'Water Temp':   ax.plot(df_sim['datetime'], T_wat, label='Water Temp', color='red')[0],
+        'Floor Temp':   ax.plot(df_sim['datetime'], T_floor, label='Floor Temp', color='orange')[0],
+        'Basin Temp':   ax.plot(df_sim['datetime'], T_basin, label='Basin Temp', color='purple')[0],
+        'Ground Temp':  ax.plot(df_sim['datetime'], T_ground, label='Ground Temp', color='gray')[0],
+        'Waterfall Temp': ax.plot(df_sim['datetime'], T_fa, label='Waterfall Temp', color='cyan', alpha=0.7)[0],
+        'Walls Temp':    ax.plot(df_sim['datetime'], T_walls, label='Walls Temp', color='brown', alpha=0.7)[0]
+    }
+
+    # Text box for stats
     stats_text = (
         f"Avg Inside: {avg_in:.1f}°C\n"
         f"Daily Swing: {avg_daily_swing:.1f}°C\n"
         f"Avg Out: {avg_out:.1f}°C\n"
         f"Avg Diff: +{avg_diff:.1f}°C"
     )
-    
-    # Add text box to the top left of the plot
-    plt.text(0.02, 0.95, stats_text, transform=plt.gca().transAxes, fontsize=12,
+    ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=10,
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
-    plt.xlabel('Date')
-    plt.ylabel('Temperature (°C)')
-    plt.title('3-Compartment Thermal Simulation (Spring Period)')
-    plt.legend(loc='upper right')
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig('thermal_simulation_spring.png')
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Temperature (°C)')
+    ax.set_title('Thermal Simulation Components (Toggle visibility on the left)')
+    ax.grid(True)
+
+    # Define checkbox positions [left, bottom, width, height]
+    from matplotlib.widgets import CheckButtons
+    rax = plt.axes([0.02, 0.4, 0.15, 0.35])
+    labels = list(lines.keys())
+    # Set default visibility (True for all)
+    visibility = [True] * len(labels)
+    check = CheckButtons(rax, labels, visibility)
+
+    # Callback function to toggle lines
+    def toggle_visibility(label):
+        lines[label].set_visible(not lines[label].get_visible())
+        fig.canvas.draw_idle()
+
+    check.on_clicked(toggle_visibility)
+
+    plt.savefig('thermal_simulation_interactive.png')
     plt.show()
 
 if __name__ == "__main__":
