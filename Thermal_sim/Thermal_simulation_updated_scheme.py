@@ -63,18 +63,18 @@ def run_thermal_simulation():
 
 
     # Dimensions.
-    V_in = 51.52        # Volume of the house interior      # Calculated (still needs an extra check)
-    V_wat = 1           # Volume of the water compartment   # Assumption, (need to get data still)
-    V_basin = 1    # Volume of the cold water basin    # Assumption, (need to get data still)
+    V_in = 51.52        # Volume of the house interior     
+    V_wat = 1.015       # Volume of the water compartment   
+    V_basin = 4.19    # Volume of the cold water basin    
 
-    A_collector = 8.38  # Surface area of the absorber      # Calculated (still needs an extra check)
+    A_collector = 10.15  # Surface area of the absorber
     A_walls = 51.52     # Surface area of the walls         # Calculated (still needs an extra check)
-    A_in_wat = 8.38     # only steep window
-    A_ground = 16       # Surface area of the ground        # Assumption
-    A_floor = 16        # Surface area of the floor         # Assumption
-    A_basin = 1    # Surface area of the cold basin    # Assumption
+    A_in_wat = 10.15     # only steep window
+    A_ground = 16       # Surface area of the ground
+    A_floor = 16        # Surface area of the floor
+    A_basin = 12.57    # Surface area of the cold basin    # Assumption
     A_fa = 4.88         # surface area of the waterfall, m², Found in 6.2
-    A_iso = 1
+    A_iso = 16
 
     d_iso = 1
     d_walls = 0.2
@@ -110,17 +110,6 @@ def run_thermal_simulation():
     epsilon_floor = 1       # Emissivity
 
     # advection coefficients (W/m2.K)
-
-    # 6. Simulation Setup
-    dt = 3600  # Time step = 1 hour
-    T_in = np.zeros(hours)
-    T_wat = np.zeros(hours)
-    T_basin = np.zeros(hours)
-    T_ground = np.zeros(hours)
-    T_floor = np.zeros(hours)
-    T_iso = np.zeros(hours)
-    T_fa = np.zeros(hours)
-    T_walls = np.zeros(hours)
     
     # Pump capacities (This will need to go to a dynamic system.)
     m_dot_pump = 0.001  # Mass flow rate of cold water (kg/s)
@@ -133,6 +122,17 @@ def run_thermal_simulation():
     A_ant = 8.07131 # Constant A in Antoine equation, found in 6.2
     B_ant = 1730.63 # Constant B in Antoine equation, found in 6.2
     C_ant = 233.426 - 273.15 # Constant C in Antoine equation, found in 6.2, convert for use with Kelvin
+
+    # 6. Simulation Setup
+    dt = 3600  # Time step = 1 hour
+    T_in = np.zeros(hours)
+    T_wat = np.zeros(hours)
+    T_basin = np.zeros(hours)
+    T_ground = np.zeros(hours)
+    T_floor = np.zeros(hours)
+    T_iso = np.zeros(hours)
+    T_fa = np.zeros(hours)
+    T_walls = np.zeros(hours)
 
     # Initial conditions (K),  Needs update.
     T_in[0] = 273.15 + 20
@@ -170,11 +170,14 @@ def run_thermal_simulation():
         # Heat flows between compartments (Watts)
         for _ in range(3600): # Sub-iterations for better stability
             # Calculations for the waterfall:
-            p_sat_fa = (10**(A_ant - (B_ant / (C_ant+current_T_fa)))) * 133.322  #Antoines formula, 133.322 converts mmhg -> Pa
-            p_sat_in = (10**(A_ant - (B_ant / (C_ant+current_T_in)))) * 133.322  #Antoines formula, 133.322 converts mmhg -> Pa
-            c_fa = p_sat_fa * M_water / (R * current_T_fa) # Ideal gas law waterfall
-            c_in = p_sat_in * M_water / (R * current_T_in) # Ideal gas law room
-            m_dot_evap = h_fa * A_fa * (c_fa - c_in)/ (rho_air * c_p_air)
+            if current_T_in < 293.15:
+                m_dot_evap = 0
+            else:
+                p_sat_fa = (10**(A_ant - (B_ant / (C_ant+current_T_fa)))) * 133.322  #Antoines formula, 133.322 converts mmhg -> Pa
+                p_sat_in = (10**(A_ant - (B_ant / (C_ant+current_T_in)))) * 133.322  #Antoines formula, 133.322 converts mmhg -> Pa
+                c_fa = p_sat_fa * M_water / (R * current_T_fa) # Ideal gas law waterfall
+                c_in = p_sat_in * M_water / (R * current_T_in) # Ideal gas law room
+                m_dot_evap = h_fa * A_fa * (c_fa - c_in)/ (rho_air * c_p_air)
 
 
             # Temperature changes
@@ -294,35 +297,53 @@ def run_thermal_simulation():
     print(f"Avg Diff (Inside vs Out): +{avg_diff:.2f} °C")
     print("------------------------------------\n")
 
-    # 9. Plot the results 
-    plt.figure(figsize=(14, 7))
-    plt.plot(df_sim['datetime'], t_out_series, label='Outside Temp', color='blue', alpha=0.5)
-    plt.plot(df_sim['datetime'], T_in, label='Inside Temp', color='green')
-    plt.plot(df_sim['datetime'], T_wat, label='Water Temp', color='red')
-    plt.plot(df_sim['datetime'], T_floor, label='Floor Temp', color='orange')
-    plt.plot(df_sim['datetime'], T_basin, label='Basin Temp', color='purple')
-    plt.plot(df_sim['datetime'], T_ground, label='Ground Temp', color='gray')
+    # 9. Plot the results with interactive checkboxes
+    fig, ax = plt.subplots(figsize=(14, 8))
+    plt.subplots_adjust(left=0.25) # Make room on the left for checkboxes
 
+    # Store lines in a dictionary to access them in the toggle function
+    lines = {
+        'Outside Temp': ax.plot(df_sim['datetime'], t_out_series, label='Outside Temp', color='blue', alpha=0.4)[0],
+        'Inside Temp':  ax.plot(df_sim['datetime'], T_in, label='Inside Temp', color='green', linewidth=2)[0],
+        'Water Temp':   ax.plot(df_sim['datetime'], T_wat, label='Water Temp', color='red')[0],
+        'Floor Temp':   ax.plot(df_sim['datetime'], T_floor, label='Floor Temp', color='orange')[0],
+        'Basin Temp':   ax.plot(df_sim['datetime'], T_basin, label='Basin Temp', color='purple')[0],
+        'Ground Temp':  ax.plot(df_sim['datetime'], T_ground, label='Ground Temp', color='gray')[0],
+        'Waterfall Temp': ax.plot(df_sim['datetime'], T_fa, label='Waterfall Temp', color='cyan', alpha=0.7)[0],
+        'Walls Temp':    ax.plot(df_sim['datetime'], T_walls, label='Walls Temp', color='brown', alpha=0.7)[0]
+    }
 
-    # Create a string for the text box on the plot
+    # Text box for stats
     stats_text = (
         f"Avg Inside: {avg_in:.1f}°C\n"
         f"Daily Swing: {avg_daily_swing:.1f}°C\n"
         f"Avg Out: {avg_out:.1f}°C\n"
         f"Avg Diff: +{avg_diff:.1f}°C"
     )
-    
-    # Add text box to the top left of the plot
-    plt.text(0.02, 0.95, stats_text, transform=plt.gca().transAxes, fontsize=12,
+    ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=10,
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
-    plt.xlabel('Date')
-    plt.ylabel('Temperature (°C)')
-    plt.title('3-Compartment Thermal Simulation (Spring Period)')
-    plt.legend(loc='upper right')
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig('thermal_simulation_15_05.png')
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Temperature (°C)')
+    ax.set_title('Thermal Simulation Components (Toggle visibility on the left)')
+    ax.grid(True)
+
+    # Define checkbox positions [left, bottom, width, height]
+    from matplotlib.widgets import CheckButtons
+    rax = plt.axes([0.02, 0.4, 0.15, 0.35])
+    labels = list(lines.keys())
+    # Set default visibility (True for all)
+    visibility = [True] * len(labels)
+    check = CheckButtons(rax, labels, visibility)
+
+    # Callback function to toggle lines
+    def toggle_visibility(label):
+        lines[label].set_visible(not lines[label].get_visible())
+        fig.canvas.draw_idle()
+
+    check.on_clicked(toggle_visibility)
+
+    plt.savefig('thermal_simulation_interactive.png')
     plt.show()
 
 if __name__ == "__main__":
