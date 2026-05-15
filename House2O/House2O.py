@@ -136,7 +136,7 @@ def reflection_loss(index_1, index_2, aoi, irradiance):
 def air_glass_water(glass_filename, aoi_glass, irradiance, sun_wavelen): #Assumes a 5mm thick low iron glass pane 
     # Transition air to glass
     index_air = 1
-    index_glass = 1.5168
+    index_glass = 1.4461
     aoi_water, irradiance = reflection_loss(index_1= index_air, index_2= index_glass, aoi=aoi_glass, irradiance=irradiance )
     # Absorption glass
     with open(glass_filename, 'r') as f:
