@@ -11,7 +11,16 @@ import matplotlib.ticker as ticker
 import pvlib
 import cdsapi
 import xarray as xr
+import glob
+import warnings
 
+import itertools
+_worker_id = None
+_id_counter = itertools.count()
+
+def _init_worker():
+    global _worker_id
+    _worker_id = next(_id_counter)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 #--------Get atmospheric data from EAC4 (used only once)------------------------------------
@@ -58,7 +67,11 @@ def solar_spectrum(file_name):
     return wavelen, irradiance #No longer in use after switching to SMARTS
 
 # ── Load once at startup ───────────────────────────────────────────────────────
-ds = xr.open_mfdataset('eac4_antwerp_*.nc', combine='by_coords')
+ds = xr.open_mfdataset(
+    glob.glob(os.path.join(BASE_DIR, 'eac4_antwerp_*.nc')),
+    combine='by_coords',
+    engine = 'netcdf4'
+)
 YEAR_MIN = int(ds.valid_time.dt.year.min())
 YEAR_MAX = int(ds.valid_time.dt.year.max())
 
@@ -970,7 +983,7 @@ def previous_main_file():
     print("Glass stole about: ", absorbed_power_total_glass, "W/m^2")
     print("The total absorbed power is: P_tot=", absorbed_power_total, "W/m^2")
 
-def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt=90, water_thickness=10, print_details=False): # The default date is VERY IMPORTANT ;)
+def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt=90, surface_azimuth=180, water_thickness=10, print_details=False): # The default date is VERY IMPORTANT ;)
     #------ Import data from PVGIS------------------------------
     # Generate the correct format for the date and time
     date, time = DATETIME.split(" ")
@@ -1013,7 +1026,7 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt
         datetime_input=DATETIME,
         tz=TZ,
         surface_tilt=surface_tilt,      # vertical window
-        surface_azimuth=180,            # south-facing
+        surface_azimuth=surface_azimuth,            # south-facing
         # -- Atmospheric parameters (Belgian summer, typical) --
         precipitable_water=atmosphere_data['precipitable_water'],
         ozone=atmosphere_data['ozone'],
@@ -1090,5 +1103,3 @@ def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt
 if __name__=="__main__":
     #previous_main_file()
     general_use(print_details=True)
-
-    
