@@ -65,7 +65,8 @@ def run_thermal_simulation():
     # Dimensions.
     V_in = 51.52        # Volume of the house interior     
     V_wat = 1.015       # Volume of the water compartment   
-    V_basin = 4.19    # Volume of the cold water basin    
+    V_basin = 4.19      # Volume of the cold water basin    
+    V_fa = 0.0005       # Volume of waterfall
 
     A_collector = 10.15  # Surface area of the absorber
     A_walls = 51.52     # Surface area of the walls         # Calculated (still needs an extra check)
@@ -76,44 +77,44 @@ def run_thermal_simulation():
     A_fa = 4.88         # surface area of the waterfall, m², Found in 6.2
     A_iso = 16
 
-    d_iso = 1
-    d_walls = 0.2
-    d_ground = 1
-    d_basin = 1
+    d_iso = 0.15
+    d_walls = 0.225
+    d_ground = 0.3 
+    d_basin = 1 
 
     # Assuming pumps keep water mass constant per compartment we can calculate thermal masses as if they were static volumes of water.
     C_in = V_in * rho_air * c_p_air                 # Thermal mass of the house interior
     C_wat = V_wat * rho_wat * c_p_wat               # Thermal mass of the water compartment (window)
-    C_basin = V_basin * rho_wat * c_p_wat   # Thermal mass of the hot water basin
-    C_floor = 10**6 #Temporary
-    C_ground = 10**6 #Temporary
-    C_iso = 10**6
-    C_fa = 10**6
-    C_walls = 10**6
+    C_basin = V_basin * rho_wat * c_p_wat           # Thermal mass of the hot water basin
+    C_floor = 3*10**6                               # Thermal mass of concrete floor
+    C_ground = 84*10**6
+    C_iso = 117600
+    C_fa = V_fa*rho_wat*c_p_wat
+    C_walls = 5.6*10**6
 
     # Convection Coefficients (W/m2.K)
     # h_out is according to Gemini: 10 + 4v , thus calculating per step in loop
-    h_in = 10
+    h_in = 8
     h_walls = 10
     h_fa = 3 # section 6.2
     h_floor = 10
 
     # Conduction Coefficients (W/m2.K)
-    k_iso = 1
-    k_ground = 1
-    k_walls = 1
+    k_iso = 0.002 #polyurethane
+    k_ground = 1.2  #Xander: Mona is echt GOATed, ik vond dit niet
+    k_walls = 0.045 #Xander: gonna add full calculation in main soon (double check tho)
     # Radiation Coefficients (W/m2.K)
-    epsilon_w_in = 1       # Emissivity
-    epsilon_w_out = 1       # Emissivity
-    epsilon_fa = 1       # Emissivity
-    epsilon_walls = 1       # Emissivity
-    epsilon_floor = 1       # Emissivity
+    epsilon_w_in = 0.95       # Emissivity (this is water, right?)
+    epsilon_w_out = 0.95      # Emissivity (this is water, right?)
+    epsilon_fa = 0.95         # Emissivity
+    epsilon_walls = 0.93      # Emissivity
+    epsilon_floor = 0.97      # Emissivity
 
     # advection coefficients (W/m2.K)
     
     # Pump capacities (This will need to go to a dynamic system.)
-    m_dot_pump = 0.001  # Mass flow rate of cold water (kg/s)
-    m_dot_floor = 0.001
+    m_dot_pump = 33.33/3600  # Mass flow rate of cold water (kg/s) -> chose slowest setting from Anis' document on google drive
+    m_dot_floor = 33.33/3600
 
     # Constants for the waterfall
     L_v = 2.45e+6 # Latent heat, J/kg, found in 6.2
@@ -158,7 +159,7 @@ def run_thermal_simulation():
     # 7. Simulation Loop (Euler Integration)
     for i in range(hours - 1):
         current_T_out = t_out_series[i] + 273.15 # Need kelvin for (T^4-T^4)
-        h_out = 1#0# + 4 * wind_speed_series[i] # Update h_out based on current wind speed
+        h_out = 23 #0# + 4 * wind_speed_series[i] # Update h_out based on current wind speed
         if T_in[i] > 273.15 + 30:
             P_sun = 0
         elif T_in[i] > 273.15 + 20:
