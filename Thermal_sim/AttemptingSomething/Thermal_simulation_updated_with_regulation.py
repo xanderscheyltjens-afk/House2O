@@ -129,6 +129,8 @@ def run_thermal_simulation():
     epsilon_walls1 = 0.91      # Emissivity
     epsilon_walls2 = 0.93      # Emissivity
     epsilon_floor = 0.97      # Emissivity
+    epsilon_window1_in = 0.9   # AI, still need to check
+    epsilon_window2_out = 0.9  # AI, still need to check
 
     # advection coefficients (W/m2.K)
     
@@ -242,11 +244,9 @@ def run_thermal_simulation():
             dT_window2 = A_collector * (
                 P_sun_glass +
                 h_out * (current_T_out - current_T_window2) +
-                sigma * epsilon_w_out * (current_T_out**4 - current_T_window2**4) +
+                sigma * epsilon_window2_out * (current_T_out**4 - current_T_window2**4) +
                 k_glass / d_glass * (current_T_wat - current_T_window2)
                 )
-
-
 
             dT_wat = A_collector * (
                 P_sun + 
@@ -258,12 +258,12 @@ def run_thermal_simulation():
             dT_window1 = A_collector * (
                 k_glass / d_glass * (current_T_wat - current_T_window1) + # from water
                 h_in * (current_T_in - current_T_window1) + # from inside air
-                sigma * epsilon_w_in * (current_T_in**4 - current_T_window1**4) # radiation from inside air
+                sigma * epsilon_window1_in * (current_T_in**4 - current_T_window1**4) # radiation from inside air
             )
 
             dT_in = A_in_wat * (
                 h_in * (current_T_window1 - current_T_in) +
-                sigma * epsilon_w_in * (current_T_window1**4 - current_T_in**4)) \
+                sigma * epsilon_window1_in * (current_T_window1**4 - current_T_in**4)) \
                 + A_fa * (
                 h_fa * (current_T_fa - current_T_in) +
                 sigma * epsilon_fa * (current_T_fa**4 - current_T_in**4))\
