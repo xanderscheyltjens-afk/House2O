@@ -59,6 +59,10 @@ def run_thermal_simulation():
     rho_air = 1.225       # Density of air (kg/m3)          # Literature
     c_p_wat = 4184      # Specific heat of water (J/kg.K)   # Literature
     rho_wat = 1000      # Density of water (kg/m3)          # Literature
+    c_p_plaster = 1090  # Needs checking (AI)
+    rho_plaster = 1200  # Needs checking (AI)
+    c_p_brick = 821     # Needs checking (AI)
+    rho_brick = 1600    # Needs checking (AI)
     sigma = 5.67e-8     # Stefan-Boltzmann (W/m2.K4)        # Literature
 
 
@@ -69,7 +73,9 @@ def run_thermal_simulation():
     V_fa = 0.0005       # Volume of waterfall
 
     A_collector = 10.15  # Surface area of the absorber
-    A_walls = 51.52     # Surface area of the walls         # Calculated (still needs an extra check)
+    A_walls1 = 51.52     # Surface area of the inside walls         # Calculated (still needs an extra check)
+    A_walls2 = 51.52     # Surface area of the outside walls         # Calculated (still needs an extra check)
+    A_wiso = 51.52     # Surface area of the outside walls         # Calculated (still needs an extra check)
     A_in_wat = 10.15     # only steep window
     A_ground = 16       # Surface area of the ground
     A_floor = 16        # Surface area of the floor
@@ -78,7 +84,9 @@ def run_thermal_simulation():
     A_iso = 16
 
     d_iso = 0.15
-    d_walls = 0.225
+    d_walls1 = 0.015    # Needs checking (AI)
+    d_walls2 = 0.09     # Needs checking (AI)
+    d_wiso = 0.12       # Needs checking (AI)
     d_ground = 0.3 
     d_basin = 1 
 
@@ -90,24 +98,30 @@ def run_thermal_simulation():
     C_ground = 84*10**6
     C_iso = 117600
     C_fa = V_fa*rho_wat*c_p_wat
-    C_walls = 5.6*10**6
+    C_walls1 = A_walls1*d_walls1*rho_plaster*c_p_plaster
+    C_walls2 = A_walls2*d_walls2*rho_brick*c_p_brick
 
     # Convection Coefficients (W/m2.K)
     # h_out is according to Gemini: 10 + 4v , thus calculating per step in loop
     h_in = 8
-    h_walls = 10
+    h_out = 23
+    h_walls1 = h_in
+    h_walls2 = h_out
     h_fa = 3 # section 6.2
     h_floor = 10
 
     # Conduction Coefficients (W/m2.K)
     k_iso = 0.002 #polyurethane
-    k_ground = 1.2  #Xander: Mona is echt GOATed, ik vond dit niet
-    k_walls = 0.045 #Xander: gonna add full calculation in main soon (double check tho)
+    k_ground = 1.2  #Xander: Mona is echt GOATed, ik vond geen bronnen (maar ik had het ook snel opgegeven :))
+    k_walls1 = 38 #Xander: gonna add full calculation in main soon (double check tho)
+    k_walls2 = 5.666 #Xander: gonna add full calculation in main soon (double check tho)
+    k_wiso = 0.208
     # Radiation Coefficients (W/m2.K)
     epsilon_w_in = 0.95       # Emissivity (this is water, right?)
     epsilon_w_out = 0.95      # Emissivity (this is water, right?)
     epsilon_fa = 0.95         # Emissivity
-    epsilon_walls = 0.93      # Emissivity
+    epsilon_walls1 = 0.91      # Emissivity
+    epsilon_walls2 = 0.93      # Emissivity
     epsilon_floor = 0.97      # Emissivity
 
     # advection coefficients (W/m2.K)
@@ -133,7 +147,8 @@ def run_thermal_simulation():
     T_floor = np.zeros(hours)
     T_iso = np.zeros(hours)
     T_fa = np.zeros(hours)
-    T_walls = np.zeros(hours)
+    T_walls1 = np.zeros(hours)
+    T_walls2 = np.zeros(hours)
 
     # Initial conditions (K),  Needs update.
     T_in[0] = 273.15 + 20
@@ -143,7 +158,8 @@ def run_thermal_simulation():
     T_floor[0] = 273.15 + 20
     T_iso[0] = 273.15 + 20
     T_fa[0] = 273.15 + 20
-    T_walls[0] = 273.15 + 20
+    T_walls1[0] = 273.15 + 20
+    T_walls2[0] = 273.15 + 20
 
 
     current_T_in = T_in[0]
@@ -153,13 +169,13 @@ def run_thermal_simulation():
     current_T_floor = T_floor[0]
     current_T_iso = T_iso[0]
     current_T_fa = T_fa[0]
-    current_T_walls = T_walls[0]
+    current_T_walls1 = T_walls1[0]
+    current_T_walls2 = T_walls2[0]
 
 
     # 7. Simulation Loop (Euler Integration)
     for i in range(hours - 1):
         current_T_out = t_out_series[i] + 273.15 # Need kelvin for (T^4-T^4)
-        h_out = 23 #0# + 4 * wind_speed_series[i] # Update h_out based on current wind speed
         if T_in[i] > 273.15 + 30:
             P_sun = 0
         elif T_in[i] > 273.15 + 20:
@@ -197,21 +213,26 @@ def run_thermal_simulation():
                 + A_fa * (
                 h_fa * (current_T_fa - current_T_in) +
                 sigma * epsilon_fa * (current_T_fa**4 - current_T_in**4))\
-                + A_walls * (
-                h_walls * (current_T_walls - current_T_in) +
-                sigma * epsilon_walls * (current_T_walls**4 - current_T_in**4))\
+                + A_walls1 * (
+                h_walls1 * (current_T_walls1 - current_T_in) +
+                sigma * epsilon_walls1 * (current_T_walls1**4 - current_T_in**4))\
                 + A_floor * (
                 h_floor * (current_T_floor - current_T_in) +
                 sigma * epsilon_floor * (current_T_floor**4 - current_T_in**4)    
                 )
             
-            dT_walls = A_walls * (
-                h_walls * (current_T_in - current_T_walls) +
-                h_walls * (current_T_out - current_T_walls) +
-                sigma * epsilon_walls * (current_T_in**4 - current_T_walls**4) +
-                sigma * epsilon_walls * (current_T_out**4 - current_T_walls**4) +
-                k_walls / d_walls * (current_T_in - current_T_walls) +
-                k_walls / d_walls * (current_T_out - current_T_walls)
+            dT_walls1 = A_walls1 * (
+                h_walls1 * (current_T_in - current_T_walls1) +
+                sigma * epsilon_walls1 * (current_T_in**4 - current_T_walls1**4) +
+                k_walls1 / d_walls1 * (current_T_in - current_T_walls1) +
+                k_wiso / d_wiso * (current_T_walls2 - current_T_walls1)
+            )
+
+            dT_walls2 = A_walls2 * (
+                h_walls2 * (current_T_out - current_T_walls2) +
+                sigma * epsilon_walls2 * (current_T_out**4 - current_T_walls2**4) +
+                k_walls2 / d_walls2 * (current_T_out - current_T_walls2) +
+                k_wiso / d_wiso * (current_T_walls1 - current_T_walls2)
             )
 
             dT_fa = m_dot_pump * c_p_wat * (current_T_basin - current_T_fa) +\
@@ -241,7 +262,8 @@ def run_thermal_simulation():
             current_T_ground += dT_ground * dt / (C_ground * 3600)
             current_T_iso += dT_iso * dt / (C_iso * 3600)
             current_T_fa += dT_fa * dt / (C_fa * 3600)
-            current_T_walls += dT_walls * dt / (C_walls * 3600)
+            current_T_walls1 += dT_walls1 * dt / (C_walls1 * 3600)
+            current_T_walls2 += dT_walls2 * dt / (C_walls2 * 3600)
 
         T_in[i+1] = current_T_in
         T_wat[i+1] = current_T_wat
@@ -250,7 +272,8 @@ def run_thermal_simulation():
         T_ground[i+1] = current_T_ground
         T_iso[i+1] = current_T_iso
         T_fa[i+1] = current_T_fa
-        T_walls[i+1] = current_T_walls
+        T_walls1[i+1] = current_T_walls1
+        T_walls2[i+1] = current_T_walls2
 
 
     #
@@ -263,7 +286,8 @@ def run_thermal_simulation():
     T_ground -= 273.15
     T_iso -= 273.15
     T_fa -= 273.15
-    T_walls -= 273.15
+    T_walls1 -= 273.15
+    T_walls2 -= 273.15
 
 
     # ---------------------------------------------------------
@@ -311,7 +335,8 @@ def run_thermal_simulation():
         'Basin Temp':   ax.plot(df_sim['datetime'], T_basin, label='Basin Temp', color='purple')[0],
         'Ground Temp':  ax.plot(df_sim['datetime'], T_ground, label='Ground Temp', color='gray')[0],
         'Waterfall Temp': ax.plot(df_sim['datetime'], T_fa, label='Waterfall Temp', color='cyan', alpha=0.7)[0],
-        'Walls Temp':    ax.plot(df_sim['datetime'], T_walls, label='Walls Temp', color='brown', alpha=0.7)[0]
+        'Walls1 Temp':    ax.plot(df_sim['datetime'], T_walls1, label='Walls1 Temp', color='brown', alpha=0.7)[0],
+        'Walls2 Temp':    ax.plot(df_sim['datetime'], T_walls2, label='Walls2 Temp', color='brown', alpha=0.7)[0]
     }
 
     # Text box for stats
