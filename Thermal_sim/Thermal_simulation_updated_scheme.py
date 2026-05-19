@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 def run_thermal_simulation():
     # 1. Load the TMY data
-    df_tmy = pd.read_csv('House2O/tmy_51.222_4.401_2005_2023.csv') 
+    df_tmy = pd.read_csv(r'C:\Users\Matti\Documents\GitHub\House2O\House2O\tmy_51.222_4.401_2005_2023.csv') 
     
     # Parse TMY time strings (Format: YYYYMMDD:HHMM)
     df_tmy['month'] = df_tmy['time(UTC)'].str[4:6].astype(int)
@@ -12,11 +12,12 @@ def run_thermal_simulation():
     df_tmy['hour'] = df_tmy['time(UTC)'].str[9:11].astype(int)
 
     # 2. Load the Spring Power Cache data
-    df_power = pd.read_csv('output_plots/OptimalAngle/Spring_fine_cache.csv') # Needs update
+    df_power = pd.read_csv(r'C:\Users\Matti\Documents\GitHub\House2O\output_plots\OptimalAngle\data_to_use\spring_azimuth_fine_cache.csv') # Needs update
     
     # Filter for a specific angle (e.g., 38 degrees) since the cache has multiple
-    chosen_angle = 38  # tilt angle (Later add compas angle)
-    df_power = df_power[df_power['angle'] == chosen_angle].copy()
+    chosen_angle = 38  # tilt angle 
+    chosen_azimuth = 105 # azimuth angle 
+    df_power = df_power[(df_power['angle'] == chosen_angle) & (df_power['azimuth'] == chosen_azimuth)].copy()
     
     # Ensure date formats align for merging
     df_power['date_str'] = df_power['date'].astype(str)
