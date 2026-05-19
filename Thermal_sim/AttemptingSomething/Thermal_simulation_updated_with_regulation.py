@@ -194,7 +194,7 @@ def run_thermal_simulation():
     for i in tqdm(range(hours - 1)):
         current_T_out = t_out_series[i] + 273.15 # Need kelvin for (T^4-T^4)
         # adjusting temperature? 30-> 25
-        if T_in[i] > 273.15 + 25: # If temperature rises, a screen will be placed over the window to reduce incoming solar radiation.
+        if T_in[i] > 273.15 + 30: # If temperature rises, a screen will be placed over the window to reduce incoming solar radiation.
             P_sun = 0
         elif T_in[i] > 273.15 + 20:
             P_sun = power_per_m2_series[i] * (273.15 + 30 - T_in[i])/10
