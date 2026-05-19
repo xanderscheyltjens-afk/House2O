@@ -66,12 +66,15 @@ def run_thermal_simulation():
     sigma = 5.67e-8     # Stefan-Boltzmann (W/m2.K4)        # Literature
     rho_glass = 2500    # Needs checking (AI)
     c_p_glass = 840    # Needs checking (AI)
+    rho_stone = 2700   # needs checking (AI) = density of the stone (granite) floor
+    c_p_stone = 790    # needs checking (AI) = specific heat of the stone floor
 
     # Dimensions.
     V_in = 51.52        # Volume of the house interior     
     V_wat = 1.015       # Volume of the water compartment   
     V_basin = 4.19      # Volume of the cold water basin    
     V_fa = 0.0005       # Volume of waterfall
+    V_floor =  4*0.1*4 # Volume of the floor, adjusted based on our dimensions
 
     A_collector = 10.15  # Surface area of the absorber
     A_walls1 = 51.52     # Surface area of the inside walls         # Calculated (still needs an extra check)
@@ -83,6 +86,7 @@ def run_thermal_simulation():
     A_basin = 12.57    # Surface area of the cold basin    # Assumption
     A_fa = 4.88         # surface area of the waterfall, m², Found in 6.2
     A_iso = 16
+    A_stone = 16        # added, stone layer to include, such that we can empty the floor but still have thermal contact with something that is not the isolation layer
 
     d_iso = 0.15
     d_walls1 = 0.015    # Needs checking (AI)
@@ -93,12 +97,14 @@ def run_thermal_simulation():
     # added to accomodate for windows: 
     d_glass = 0.05      # needs checking, pure assumption
     k_glass = 1.0       # needs checking (AI)
+    d_stone = 0.05      # needs checking (AI) = stone thickness for the floor
+    
 
     # Assuming pumps keep water mass constant per compartment we can calculate thermal masses as if they were static volumes of water.
     C_in = V_in * rho_air * c_p_air                 # Thermal mass of the house interior
     C_wat = V_wat * rho_wat * c_p_wat               # Thermal mass of the water compartment (window)
     C_basin = V_basin * rho_wat * c_p_wat           # Thermal mass of the hot water basin
-    C_floor = 3*10**6                               # Thermal mass of concrete floor
+    C_floor = V_floor * rho_wat * c_p_wat         # adjusted based on our dimensions
     C_ground = 84*10**6
     C_iso = 117600
     C_fa = V_fa*rho_wat*c_p_wat
@@ -106,6 +112,7 @@ def run_thermal_simulation():
     C_walls2 = A_walls2*d_walls2*rho_brick*c_p_brick
     C_window1 = A_in_wat*d_glass*rho_glass*c_p_glass
     C_window2 = A_collector*d_glass*rho_glass*c_p_glass
+    C_stone = A_stone*d_stone*rho_stone*c_p_stone # added, stone layer to include, such that we can empty the floor but still have thermal contact with something that is not the isolation layer
 
     # Convection Coefficients (W/m2.K)
     # h_out is according to Gemini: 10 + 4v , thus calculating per step in loop
@@ -114,7 +121,7 @@ def run_thermal_simulation():
     h_walls1 = h_in
     h_walls2 = h_out
     h_fa = 3 # section 6.2
-    h_floor = 10
+    h_stone = 10
 
     # Conduction Coefficients (W/m2.K)
     k_iso = 0.002 #polyurethane
@@ -122,16 +129,17 @@ def run_thermal_simulation():
     k_walls1 = 38 #Xander: gonna add full calculation in main soon (double check tho)
     k_walls2 = 5.666 #Xander: gonna add full calculation in main soon (double check tho)
     k_wiso = 0.208
+    k_stone = 2.75      # needs checking (AI) = thermal conductivity of the stone floor
+    
     # Radiation Coefficients (W/m2.K)
     epsilon_w_in = 0.95       # Emissivity (this is water, right?)
     epsilon_w_out = 0.95      # Emissivity (this is water, right?)
     epsilon_fa = 0.95         # Emissivity
     epsilon_walls1 = 0.91      # Emissivity
     epsilon_walls2 = 0.93      # Emissivity
-    epsilon_floor = 0.97      # Emissivity
     epsilon_window1_in = 0.9   # AI, still need to check
     epsilon_window2_out = 0.9  # AI, still need to check
-
+    epsilon_stone = 0.95      # needs checking (AI) = emissivity of the stone floor
     # advection coefficients (W/m2.K)
     
     # Pump capacities (This will need to go to a dynamic system.)
@@ -160,7 +168,8 @@ def run_thermal_simulation():
     # added inside and outside windows
     T_window1 = np.zeros(hours)
     T_window2 = np.zeros(hours)
-    
+    # added stone floor
+    T_stone = np.zeros(hours)
 
     # Initial conditions (K),  Needs update.
     T_in[0] = 273.15 + 20
@@ -175,6 +184,9 @@ def run_thermal_simulation():
     # add inside and outside windows
     T_window1[0] = 273.15 + 20
     T_window2[0] = 273.15 + 20
+    # add stone floor
+    T_stone[0] = 273.15 + 20
+
 
     current_T_in = T_in[0]
     current_T_wat = T_wat[0]
@@ -188,7 +200,7 @@ def run_thermal_simulation():
     # same here
     current_T_window1 = T_window1[0]
     current_T_window2 = T_window2[0]
-
+    current_T_stone = T_stone[0]
     prev_waterfall_on = False # initialization of the waterfall control logic
     waterfall_active = np.zeros(hours, dtype= bool) 
 
@@ -214,11 +226,15 @@ def run_thermal_simulation():
         
         comfortable = not too_cold and not too_hot
 
-        floor_heating_on = too_cold
         waterfall_on = too_hot
+        floor_drain_on = too_hot # drain the floor to prevent overheating
+      
+        floor_heating_on = too_cold
+        floor_filled = not floor_drain_on 
 
         m_dot_floor_active = m_dot_floor if floor_heating_on else 0.0
-        m_dot_fa_active = m_dot_pump if waterfall_on else 0.0       
+        m_dot_fa_active = m_dot_pump if waterfall_on else 0.0
+
 
         if waterfall_on and not prev_waterfall_on:
                     current_T_fa = current_T_basin
@@ -248,13 +264,15 @@ def run_thermal_simulation():
                 k_glass / d_glass * (current_T_wat - current_T_window2)
                 )
 
+
             dT_wat = A_collector * (
                 P_sun + 
                 k_glass / d_glass * (current_T_window2 - current_T_wat) + # from outer glass
                 k_glass / d_glass * (current_T_window1 - current_T_wat) # from inner glass
-                )+ (
+                ) + (
                 m_dot_pump * c_p_wat * (current_T_basin - current_T_wat) )  # evap removed as it should only be in the waterfall equation
 
+            
             dT_window1 = A_collector * (
                 k_glass / d_glass * (current_T_wat - current_T_window1) + # from water
                 h_in * (current_T_in - current_T_window1) + # from inside air
@@ -270,9 +288,9 @@ def run_thermal_simulation():
                 + A_walls1 * (
                 h_walls1 * (current_T_walls1 - current_T_in) +
                 sigma * epsilon_walls1 * (current_T_walls1**4 - current_T_in**4))\
-                + A_floor * (
-                h_floor * (current_T_floor - current_T_in) +
-                sigma * epsilon_floor * (current_T_floor**4 - current_T_in**4)    
+                + A_stone * (
+                h_stone * (current_T_stone - current_T_in) +
+                sigma * epsilon_stone * (current_T_stone**4 - current_T_in**4)    
                 )
             
             dT_walls1 = A_walls1 * (
@@ -294,13 +312,26 @@ def run_thermal_simulation():
                 waterfall_on * (h_fa * A_fa * (current_T_in - current_T_fa) +\
                 sigma * epsilon_fa * (current_T_in**4 - current_T_fa**4)) +\
                 - m_dot_evap * L_v
-
-            dT_floor = m_dot_floor_active * c_p_wat * (current_T_basin - current_T_floor) +\
-                A_floor * (
-                h_floor * (current_T_in - current_T_floor) +
-                sigma * epsilon_floor * (current_T_in**4 - current_T_floor**4) +
-                k_iso * (current_T_iso - current_T_floor)/d_iso)
             
+
+            # stone layer to conduct heat from water underneath and convect and radiate to the room above
+            dT_stone = A_stone * (
+                k_stone / d_stone * (current_T_floor - current_T_stone) * floor_filled + # conduction from water below
+                h_stone * (current_T_in - current_T_stone) + # convection from stone to air
+                sigma * epsilon_stone * (current_T_in**4 - current_T_stone**4) # radiation from floor
+            )
+
+            # only activate active floor heating when the pump is on.
+            if floor_filled:        
+                dT_floor = m_dot_floor_active * c_p_wat * (current_T_basin - current_T_floor) +\
+                    A_floor * (
+                    k_stone / d_stone * (current_T_stone - current_T_floor) + # conduction to stone layer
+                    k_iso / d_iso * (current_T_iso - current_T_floor) )# conduction to isolation layer
+            else:
+                current_T_floor = current_T_stone
+                dT_floor = 0
+
+
             dT_iso = k_iso * A_iso / d_iso * (current_T_floor + current_T_ground - 2 * current_T_iso)
             
             dT_ground = k_ground * A_ground / d_ground * (current_T_iso + current_T_basin - 2 * current_T_ground)
@@ -309,6 +340,7 @@ def run_thermal_simulation():
                 m_dot_floor_active * c_p_wat * (current_T_floor - current_T_basin) +\
                 m_dot_fa_active * c_p_wat * (current_T_fa - current_T_basin) +\
                 k_ground * A_basin / d_basin * (current_T_ground - current_T_basin) 
+
 
             current_T_wat += dT_wat * dt / (C_wat * 3600)
             current_T_in += dT_in * dt / (C_in * 3600)
@@ -323,6 +355,7 @@ def run_thermal_simulation():
             current_T_window1 += dT_window1 * dt / (C_window1 * 3600) # update C
             current_T_window2 += dT_window2 * dt / (C_window2 * 3600) # 
 
+            current_T_stone += dT_stone *dt / (C_stone * 3600) # update for stone layer
         
         T_in[i+1] = current_T_in
         T_wat[i+1] = current_T_wat
@@ -337,6 +370,7 @@ def run_thermal_simulation():
         T_window1[i+1] = current_T_window1
         T_window2[i+1] = current_T_window2
 
+        T_stone[i+1] = current_T_stone
 
     #
     # Restore temperatures to Celsius 
@@ -354,6 +388,7 @@ def run_thermal_simulation():
     T_window1 -= 273.15
     T_window2 -= 273.15
 
+    T_stone -= 273.15
     # ---------------------------------------------------------
     # 8. CALCULATE STATISTICS
     # ---------------------------------------------------------
@@ -405,7 +440,24 @@ def run_thermal_simulation():
         'Walls1 Temp':    ax.plot(df_sim['datetime'], T_walls1, label='Walls1 Temp', color='brown', alpha=0.7)[0],
         'Walls2 Temp':    ax.plot(df_sim['datetime'], T_walls2, label='Walls2 Temp', color='brown', alpha=0.7)[0],
         'Window1 Temp':   ax.plot(df_sim['datetime'], T_window1, label='Window1 Temp', color='lightblue', alpha=0.7)[0], # added 
-        'Window2 Temp':   ax.plot(df_sim['datetime'], T_window2, label='Window2 Temp', color='lightblue', alpha=0.7)[0] # added
+        'Window2 Temp':   ax.plot(df_sim['datetime'], T_window2, label='Window2 Temp', color='lightblue', alpha=0.7)[0], # added
+        'Stone Temp':     ax.plot(df_sim['datetime'], T_stone, label='Stone Temp', color='darkgreen', alpha=0.7)[0]  # added
+    }
+
+    # set default visibility (only inside and outside temp visible)
+    default_visibility = {
+        'Outside Temp': True,
+        'Inside Temp': True,
+        'Water Temp': False,
+        'Floor Temp': False,
+        'Basin Temp': False,
+        'Ground Temp': False,
+        'Waterfall Temp': False,
+        'Walls1 Temp': False,
+        'Walls2 Temp': False,
+        'Window1 Temp': False,  
+        'Window2 Temp': False,  
+        'Stone Temp': False     
     }
 
     # Text box for stats
@@ -428,8 +480,19 @@ def run_thermal_simulation():
     rax = plt.axes([0.02, 0.4, 0.15, 0.35])
     labels = list(lines.keys())
     # Set default visibility (True for all)
-    visibility = [True] * len(labels)
+    visibility = [default_visibility[label] for label in labels]
     check = CheckButtons(rax, labels, visibility)
+
+    
+
+    # give each checkbox-label the same color as the line
+    for label, visible in default_visibility.items():
+        lines[label].set_visible(visible)
+
+    # color checkbox labels to match lines
+    for text in check.labels:
+        line_color = lines[text.get_text()].get_color()
+        text.set_color(line_color)
 
     # Callback function to toggle lines
     def toggle_visibility(label):
@@ -438,7 +501,7 @@ def run_thermal_simulation():
 
     check.on_clicked(toggle_visibility)
 
-    plt.savefig(r'C:\Users\Matti\Documents\GitHub\House2O\Thermal_sim\AttemptingSomething\test_thermal_simulation_added_windows_different_panelsettings.png')
+    plt.savefig(r'C:\Users\Matti\Documents\GitHub\House2O\Thermal_sim\AttemptingSomething\thermal_simulation_final.png')
     plt.show()
 
 if __name__ == "__main__":
