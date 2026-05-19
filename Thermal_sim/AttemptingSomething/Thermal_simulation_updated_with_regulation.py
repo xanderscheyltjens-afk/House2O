@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm import tqdm 
 
 def run_thermal_simulation():
     # 1. Load the TMY data
@@ -12,19 +13,14 @@ def run_thermal_simulation():
     df_tmy['hour'] = df_tmy['time(UTC)'].str[9:11].astype(int)
 
     # 2. Load the Spring Power Cache data
-    df_power = pd.read_csv(r'C:\Users\Matti\Documents\GitHub\House2O\output_plots\OptimalAngle\data_to_use\spring_azimuth_fine_cache.csv') # Needs update
-    
-    # Filter for a specific angle (e.g., 38 degrees) since the cache has multiple
-    chosen_angle = 38  # tilt angle 
-    chosen_azimuth = 105 # azimuth angle 
-    df_power = df_power[(df_power['angle'] == chosen_angle) & (df_power['azimuth'] == chosen_azimuth)].copy()
-    
+    df_power = pd.read_csv(r'C:\Users\Matti\Documents\GitHub\House2O\Thermal_sim\AttemptingSomething\SpringDataOptimized_cache.csv') 
+        
     # Ensure date formats align for merging
     df_power['date_str'] = df_power['date'].astype(str)
     df_power['hour'] = df_power['hour'].astype(int)
 
     # 3. Construct a continuous timeline
-    # We must construct a timeline including nights so dtw remains exactly 3600 seconds.
+    # We must construct a timeline including nights so dt remains exactly 3600 seconds.
     min_date = pd.to_datetime(df_power['date'].min())
     max_date = pd.to_datetime(df_power['date'].max())
     
@@ -42,17 +38,20 @@ def run_thermal_simulation():
     df_sim = pd.merge(df_sim, df_tmy[['month', 'day', 'hour', 'T2m', 'WS10m']], on=['month', 'day', 'hour'], how='left')
     
     # Merge the incoming solar power data (joining on exact date and hour)
-    df_sim = pd.merge(df_sim, df_power[['date_str', 'hour', 'power']], on=['date_str', 'hour'], how='left')
+    # add the solar power per m2 absorbed by the glass itself
+    df_sim = pd.merge(df_sim, df_power[['date_str', 'hour', 'power', 'power_glass']], on=['date_str', 'hour'], how='left') # also merge the power absorbed by the glass itself
     
     # Fill missing temperatures (just in case) and replace missing/nighttime power with 0 W/m2
     df_sim['T2m'] = df_sim['T2m'].ffill()
     df_sim['WS10m'] = df_sim['WS10m'].ffill()
     df_sim['power'] = df_sim['power'].fillna(0)
+    df_sim['power_glass'] = df_sim['power_glass'].fillna(0)
 
     # Extract clean arrays for the simulation loop
     t_out_series = df_sim['T2m'].values
     wind_speed_series = df_sim['WS10m'].values
     power_per_m2_series = df_sim['power'].values
+    power_glass_series = df_sim['power_glass'].values
     hours = len(df_sim)
 
     # Constants
@@ -65,7 +64,8 @@ def run_thermal_simulation():
     c_p_brick = 821     # Needs checking (AI)
     rho_brick = 1600    # Needs checking (AI)
     sigma = 5.67e-8     # Stefan-Boltzmann (W/m2.K4)        # Literature
-
+    rho_glass = 2500    # Needs checking (AI)
+    c_p_glass = 840    # Needs checking (AI)
 
     # Dimensions.
     V_in = 51.52        # Volume of the house interior     
@@ -90,6 +90,9 @@ def run_thermal_simulation():
     d_wiso = 0.12       # Needs checking (AI)
     d_ground = 0.3 
     d_basin = 1 
+    # added to accomodate for windows: 
+    d_glass = 0.05      # needs checking, pure assumption
+    k_glass = 1.0       # needs checking (AI)
 
     # Assuming pumps keep water mass constant per compartment we can calculate thermal masses as if they were static volumes of water.
     C_in = V_in * rho_air * c_p_air                 # Thermal mass of the house interior
@@ -101,6 +104,8 @@ def run_thermal_simulation():
     C_fa = V_fa*rho_wat*c_p_wat
     C_walls1 = A_walls1*d_walls1*rho_plaster*c_p_plaster
     C_walls2 = A_walls2*d_walls2*rho_brick*c_p_brick
+    C_window1 = A_in_wat*d_glass*rho_glass*c_p_glass
+    C_window2 = A_collector*d_glass*rho_glass*c_p_glass
 
     # Convection Coefficients (W/m2.K)
     # h_out is according to Gemini: 10 + 4v , thus calculating per step in loop
@@ -150,6 +155,10 @@ def run_thermal_simulation():
     T_fa = np.zeros(hours)
     T_walls1 = np.zeros(hours)
     T_walls2 = np.zeros(hours)
+    # added inside and outside windows
+    T_window1 = np.zeros(hours)
+    T_window2 = np.zeros(hours)
+    
 
     # Initial conditions (K),  Needs update.
     T_in[0] = 273.15 + 20
@@ -161,7 +170,9 @@ def run_thermal_simulation():
     T_fa[0] = 273.15 + 20
     T_walls1[0] = 273.15 + 20
     T_walls2[0] = 273.15 + 20
-
+    # add inside and outside windows
+    T_window1[0] = 273.15 + 20
+    T_window2[0] = 273.15 + 20
 
     current_T_in = T_in[0]
     current_T_wat = T_wat[0]
@@ -172,12 +183,18 @@ def run_thermal_simulation():
     current_T_fa = T_fa[0]
     current_T_walls1 = T_walls1[0]
     current_T_walls2 = T_walls2[0]
+    # same here
+    current_T_window1 = T_window1[0]
+    current_T_window2 = T_window2[0]
 
+    prev_waterfall_on = False # initialization of the waterfall control logic
+    waterfall_active = np.zeros(hours, dtype= bool) 
 
     # 7. Simulation Loop (Euler Integration)
-    for i in range(hours - 1):
+    for i in tqdm(range(hours - 1)):
         current_T_out = t_out_series[i] + 273.15 # Need kelvin for (T^4-T^4)
-        if T_in[i] > 273.15 + 30:
+        # adjusting temperature? 30-> 25
+        if T_in[i] > 273.15 + 25: # If temperature rises, a screen will be placed over the window to reduce incoming solar radiation.
             P_sun = 0
         elif T_in[i] > 273.15 + 20:
             P_sun = power_per_m2_series[i] * (273.15 + 30 - T_in[i])/10
@@ -185,10 +202,34 @@ def run_thermal_simulation():
             # Calculate incoming power (W/m²) based on current hour
             P_sun = power_per_m2_series[i]
         
+        P_sun_glass = power_glass_series[i] # Calculate power absorbed by the glass itself, which reduces the power reaching the interior
+
+        # (7b). Control logic (evaluated once per hour)
+        T_setpoint_low = 273.15 + 23
+        T_setpoint_high = 273.15 + 23
+
+        too_cold = T_in[i] < T_setpoint_low
+        too_hot = T_in[i] > T_setpoint_high
+        
+        comfortable = not too_cold and not too_hot
+
+        floor_heating_on = too_cold
+        waterfall_on = too_hot
+
+        m_dot_floor_active = m_dot_floor if floor_heating_on else 0.0
+        m_dot_fa_active = m_dot_pump if waterfall_on else 0.0       
+
+        if waterfall_on and not prev_waterfall_on:
+                    current_T_fa = current_T_basin
+        prev_waterfall_on = waterfall_on
+        waterfall_active[i] = waterfall_on
+
+
         # Heat flows between compartments (Watts)
         for _ in range(3600): # Sub-iterations for better stability
             # Calculations for the waterfall:
-            if current_T_in < 293.15:
+            # And gate evaporation
+            if current_T_in < 293.15 or not waterfall_on:
                 m_dot_evap = 0
             else:
                 p_sat_fa = (10**(A_ant - (B_ant / (C_ant+current_T_fa)))) * 133.322  #Antoines formula, 133.322 converts mmhg -> Pa
@@ -196,21 +237,34 @@ def run_thermal_simulation():
                 c_fa = p_sat_fa * M_water / (R * current_T_fa) # Ideal gas law waterfall
                 c_in = p_sat_in * M_water / (R * current_T_in) # Ideal gas law room
                 m_dot_evap = h_fa * A_fa * (c_fa - c_in)/ (rho_air * c_p_air)
-
-
+                
             # Temperature changes
+            # new: change in temperature for the outside window
+            dT_window2 = A_collector * (
+                P_sun_glass +
+                h_out * (current_T_out - current_T_window2) +
+                sigma * epsilon_w_out * (current_T_out**4 - current_T_window2**4) +
+                k_glass / d_glass * (current_T_wat - current_T_window2)
+                )
+
+
+
             dT_wat = A_collector * (
                 P_sun + 
-                h_in * (current_T_in-current_T_wat) +
-                h_out * (current_T_out - current_T_wat) + 
-                sigma * epsilon_w_in * (current_T_in**4 - current_T_wat**4) +
-                sigma * epsilon_w_out * (current_T_out**4 - current_T_wat**4)) + (
-                m_dot_pump * c_p_wat * (current_T_basin - current_T_wat) +
-                m_dot_evap * L_v )
-            
+                k_glass / d_glass * (current_T_window2 - current_T_wat) + # from outer glass
+                k_glass / d_glass * (current_T_window1 - current_T_wat) # from inner glass
+                )+ (
+                m_dot_pump * c_p_wat * (current_T_basin - current_T_wat) )  # evap removed as it should only be in the waterfall equation
+
+            dT_window1 = A_collector * (
+                k_glass / d_glass * (current_T_wat - current_T_window1) + # from water
+                h_in * (current_T_in - current_T_window1) + # from inside air
+                sigma * epsilon_w_in * (current_T_in**4 - current_T_window1**4) # radiation from inside air
+            )
+
             dT_in = A_in_wat * (
-                h_in * (current_T_wat - current_T_in) +
-                sigma * epsilon_w_in * (current_T_wat**4 - current_T_in**4)) \
+                h_in * (current_T_window1 - current_T_in) +
+                sigma * epsilon_w_in * (current_T_window1**4 - current_T_in**4)) \
                 + A_fa * (
                 h_fa * (current_T_fa - current_T_in) +
                 sigma * epsilon_fa * (current_T_fa**4 - current_T_in**4))\
@@ -236,12 +290,13 @@ def run_thermal_simulation():
                 k_wiso / d_wiso * (current_T_walls1 - current_T_walls2)
             )
 
-            dT_fa = m_dot_pump * c_p_wat * (current_T_basin - current_T_fa) +\
-                h_fa * A_fa * (current_T_in - current_T_fa) +\
-                sigma * epsilon_fa * (current_T_in**4 - current_T_fa**4) +\
+            # Adjusted to only use when it's too hot
+            dT_fa = m_dot_fa_active * c_p_wat * (current_T_basin - current_T_fa) +\
+                waterfall_on * (h_fa * A_fa * (current_T_in - current_T_fa) +\
+                sigma * epsilon_fa * (current_T_in**4 - current_T_fa**4)) +\
                 - m_dot_evap * L_v
 
-            dT_floor = m_dot_floor * c_p_wat * (current_T_basin - current_T_floor) +\
+            dT_floor = m_dot_floor_active * c_p_wat * (current_T_basin - current_T_floor) +\
                 A_floor * (
                 h_floor * (current_T_in - current_T_floor) +
                 sigma * epsilon_floor * (current_T_in**4 - current_T_floor**4) +
@@ -252,8 +307,8 @@ def run_thermal_simulation():
             dT_ground = k_ground * A_ground / d_ground * (current_T_iso + current_T_basin - 2 * current_T_ground)
 
             dT_basin = m_dot_pump * c_p_wat * (current_T_wat - current_T_basin) +\
-                m_dot_floor * c_p_wat * (current_T_floor - current_T_basin) +\
-                m_dot_pump * c_p_wat * (current_T_fa - current_T_basin) +\
+                m_dot_floor_active * c_p_wat * (current_T_floor - current_T_basin) +\
+                m_dot_fa_active * c_p_wat * (current_T_fa - current_T_basin) +\
                 k_ground * A_basin / d_basin * (current_T_ground - current_T_basin) 
 
             current_T_wat += dT_wat * dt / (C_wat * 3600)
@@ -266,6 +321,10 @@ def run_thermal_simulation():
             current_T_walls1 += dT_walls1 * dt / (C_walls1 * 3600)
             current_T_walls2 += dT_walls2 * dt / (C_walls2 * 3600)
 
+            current_T_window1 += dT_window1 * dt / (C_window1 * 3600) # update C
+            current_T_window2 += dT_window2 * dt / (C_window2 * 3600) # 
+
+        
         T_in[i+1] = current_T_in
         T_wat[i+1] = current_T_wat
         T_floor[i+1] = current_T_floor
@@ -275,6 +334,9 @@ def run_thermal_simulation():
         T_fa[i+1] = current_T_fa
         T_walls1[i+1] = current_T_walls1
         T_walls2[i+1] = current_T_walls2
+
+        T_window1[i+1] = current_T_window1
+        T_window2[i+1] = current_T_window2
 
 
     #
@@ -290,6 +352,8 @@ def run_thermal_simulation():
     T_walls1 -= 273.15
     T_walls2 -= 273.15
 
+    T_window1 -= 273.15
+    T_window2 -= 273.15
 
     # ---------------------------------------------------------
     # 8. CALCULATE STATISTICS
@@ -324,6 +388,9 @@ def run_thermal_simulation():
     print("------------------------------------\n")
 
     # 9. Plot the results with interactive checkboxes
+    T_fa_plot = T_fa.copy()
+    T_fa_plot[~waterfall_active] = np.nan # keep track of the times where the waterfall is active to plot correctly
+
     fig, ax = plt.subplots(figsize=(14, 8))
     plt.subplots_adjust(left=0.25) # Make room on the left for checkboxes
 
@@ -335,9 +402,11 @@ def run_thermal_simulation():
         'Floor Temp':   ax.plot(df_sim['datetime'], T_floor, label='Floor Temp', color='orange')[0],
         'Basin Temp':   ax.plot(df_sim['datetime'], T_basin, label='Basin Temp', color='purple')[0],
         'Ground Temp':  ax.plot(df_sim['datetime'], T_ground, label='Ground Temp', color='gray')[0],
-        'Waterfall Temp': ax.plot(df_sim['datetime'], T_fa, label='Waterfall Temp', color='cyan', alpha=0.7)[0],
+        'Waterfall Temp': ax.plot(df_sim['datetime'], T_fa_plot, label='Waterfall Temp', color='cyan', alpha=0.7)[0],
         'Walls1 Temp':    ax.plot(df_sim['datetime'], T_walls1, label='Walls1 Temp', color='brown', alpha=0.7)[0],
-        'Walls2 Temp':    ax.plot(df_sim['datetime'], T_walls2, label='Walls2 Temp', color='brown', alpha=0.7)[0]
+        'Walls2 Temp':    ax.plot(df_sim['datetime'], T_walls2, label='Walls2 Temp', color='brown', alpha=0.7)[0],
+        'Window1 Temp':   ax.plot(df_sim['datetime'], T_window1, label='Window1 Temp', color='lightblue', alpha=0.7)[0], # added 
+        'Window2 Temp':   ax.plot(df_sim['datetime'], T_window2, label='Window2 Temp', color='lightblue', alpha=0.7)[0] # added
     }
 
     # Text box for stats
@@ -370,7 +439,7 @@ def run_thermal_simulation():
 
     check.on_clicked(toggle_visibility)
 
-    plt.savefig('thermal_simulation_interactive.png')
+    plt.savefig(r'C:\Users\Matti\Documents\GitHub\House2O\Thermal_sim\AttemptingSomething\test_thermal_simulation_added_windows_different_panelsettings.png')
     plt.show()
 
 if __name__ == "__main__":

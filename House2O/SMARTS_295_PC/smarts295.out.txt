@@ -21,23 +21,13 @@
 * ATMOSPHERE : MLS         AEROSOL TYPE: S&F_TROPO                                                       
 
 * INPUTS:
-<<<<<<< Updated upstream
-     Pressure (mb) = 1010.800   Ground Altitude (km) =   0.0130
+     Pressure (mb) = 1016.600   Ground Altitude (km) =   0.0130
      Height above ground (km) =   0.0000
-     Relative Humidity (%) = 76.048   Precipitable Water (cm) =  3.2542
-     Ozone (atm-cm) = 0.3452 or 345.2 Dobson Units
-   AEROSOLS:  Optical Depth at 500 nm = 0.3843      Optical depth at 550 nm = 0.3311
-       Angstrom's Beta = 0.1299       Schuepp's B = 0.1669
-     Meteorological Range (km) =   22.5   Visibility (km) =   17.3
-=======
-     Pressure (mb) = 1023.100   Ground Altitude (km) =   0.0000
-     Height above ground (km) =   0.0000
-     Relative Humidity (%) = 76.180   Precipitable Water (cm) =  2.0000
-     Ozone (atm-cm) = 0.3400 or 340.0 Dobson Units
-   AEROSOLS:  Optical Depth at 500 nm = 0.1200      Optical depth at 550 nm = 0.1034
-       Angstrom's Beta = 0.0406       Schuepp's B = 0.0521
-     Meteorological Range (km) =   83.4   Visibility (km) =   63.9
->>>>>>> Stashed changes
+     Relative Humidity (%) = 76.048   Precipitable Water (cm) =  2.1373
+     Ozone (atm-cm) = 0.3724 or 372.4 Dobson Units
+   AEROSOLS:  Optical Depth at 500 nm = 0.1743      Optical depth at 550 nm = 0.1501
+       Angstrom's Beta = 0.0589       Schuepp's B = 0.0757
+     Meteorological Range (km) =   53.6   Visibility (km) =   41.0
      Alpha1 = 0.9990  Alpha2 = 1.5650   Mean Angstrom's Alpha = 1.2820
      Season = SPRING/SUMMER           
 
@@ -70,39 +60,21 @@ The following spectral variables will be output to file: smarts295.ext.txt
 ====================================================================================================
 
 * SOLAR POSITION (deg.):
-<<<<<<< Updated upstream
-    Zenith Angle (apparent) = 31.407  Azimuth (from North) =  214.20
+    Zenith Angle (apparent) = 82.771  Azimuth (from North) =  298.98
 
       RELATIVE OPTICAL MASSES:
-  - Rayleigh =  1.171
-  - Water Vapor =  1.172
-  - Ozone =  1.171
-  - NO2 =  1.171
-  - Aerosols =  1.172
+  - Rayleigh =  7.515
+  - Water Vapor =  7.837
+  - Ozone =  6.753
+  - NO2 =  6.668
+  - Aerosols =  7.781
 
   Results below are for this specific day:
- Year = 2024   Month =  6  Day = 27   Hour (LST) = 15.000   Day of Year = 179
+ Year = 2024   Month =  6  Day = 21   Hour (LST) = 21.000   Day of Year = 173
    In Universal Time:
-   Day (UT) = 27   Hour (UT) = 13.000
-   Julian Day =  2460489.000  Declination =  23.284 deg.  Radius vector = 1.01658   Equation of Time (min) =  -3.190
-   Local Apparent Time (or Solar Time):  13.240
-=======
-    Zenith Angle (apparent) = 53.425  Azimuth (from North) =  223.32
-
-      RELATIVE OPTICAL MASSES:
-  - Rayleigh =  1.676
-  - Water Vapor =  1.678
-  - Ozone =  1.673
-  - NO2 =  1.675
-  - Aerosols =  1.678
-
-  Results below are for this specific day:
- Year = 2024   Month =  4  Day =  3   Hour (LST) = 16.000   Day of Year =  94
-   In Universal Time:
-   Day (UT) =  3   Hour (UT) = 14.000
-   Julian Day =  2460404.000  Declination =   5.641 deg.  Radius vector = 1.00000   Equation of Time (min) =  -3.088
-   Local Apparent Time (or Solar Time):  14.242
->>>>>>> Stashed changes
+   Day (UT) = 21   Hour (UT) = 19.000
+   Julian Day =  2460483.250  Declination =  23.435 deg.  Radius vector = 1.01630   Equation of Time (min) =  -1.969
+   Local Apparent Time (or Solar Time):  19.261
 
 
 
@@ -114,20 +86,12 @@ The following spectral variables will be output to file: smarts295.ext.txt
 
     BrO       CH2O        CH4      ClNO3         CO        CO2       HNO2       HNO3        NH3
 
-<<<<<<< Updated upstream
-0.2500E-05 0.3000E-03 0.1272E+01 0.1200E-03 0.8728E-01 0.3383E+03 0.1000E-03 0.3839E-03 0.1702E-03
-=======
-0.2500E-05 0.3000E-03 0.1290E+01 0.1200E-03 0.8875E-01 0.0000E+00 0.1000E-03 0.3845E-03 0.1748E-03
->>>>>>> Stashed changes
+0.2500E-05 0.3000E-03 0.1280E+01 0.1200E-03 0.8797E-01 0.3403E+03 0.1000E-03 0.3842E-03 0.1724E-03
 
 
      NO        NO2        NO3         N2        N2O         O2         O3         O4        SO2
 
-<<<<<<< Updated upstream
-0.3226E-03 0.2184E-03 0.5000E-04 0.3692E+06 0.2391E+00 0.1674E+06 0.3452E+00 0.1674E+06 0.1079E-03
-=======
-0.3255E-03 0.2186E-03 0.5000E-04 0.3775E+06 0.2424E+00 0.1694E+06 0.3400E+00 0.1694E+06 0.1109E-03
->>>>>>> Stashed changes
+0.3239E-03 0.2185E-03 0.5000E-04 0.3731E+06 0.2406E+00 0.1683E+06 0.3724E+00 0.1683E+06 0.1093E-03
 
 
 
@@ -136,53 +100,31 @@ The following spectral variables will be output to file: smarts295.ext.txt
 
     BrO       CH2O        CH4      ClNO3         CO        CO2       HNO2       HNO3        NH3
 
-<<<<<<< Updated upstream
-0.2500E-05 0.1000E-02 0.1302E+01 0.1200E-03 0.1223E+00 0.3383E+03 0.3000E-03 0.1584E-02 0.1702E-03
-=======
-0.2500E-05 0.0000E+00 0.1290E+01 0.1200E-03 0.7875E-01 0.0000E+00 0.1000E-05 0.1584E-02 0.1748E-03
->>>>>>> Stashed changes
+0.2500E-05 0.1000E-02 0.1310E+01 0.1200E-03 0.1230E+00 0.3403E+03 0.3000E-03 0.1584E-02 0.1724E-03
 
 
      NO        NO2        NO3         N2        N2O         O2         O3         O4        SO2
 
-<<<<<<< Updated upstream
-0.2032E-01 0.2218E-02 0.5500E-04 0.3692E+06 0.2391E+00 0.1674E+06 0.3505E+00 0.1674E+06 0.5108E-02
-=======
-0.3255E-03 0.2186E-03 0.1000E-05 0.3775E+06 0.2424E+00 0.1694E+06 0.3393E+00 0.1694E+06 0.1109E-03
->>>>>>> Stashed changes
+0.2032E-01 0.2218E-02 0.5500E-04 0.3731E+06 0.2406E+00 0.1683E+06 0.3777E+00 0.1683E+06 0.5109E-02
 
 
 
 
 * ANGLES (deg.) FOR TILTED SURFACE CALCULATIONS: 
-<<<<<<< Updated upstream
-   Surface Tilt =  90.000   Surface Azimuth (from North) = 180.000
-   Incidence Angle =  64.469
+   Surface Tilt =  38.000   Surface Azimuth (from North) = 105.000
+   Incidence Angle = 119.571
 
   Diffuse irradiance ratios (tilted plane/horizontal):
-      0.5000  (isotropic approximate conversion--for reference)
-      0.6558  (anisotropic conversion model--used here)
-=======
-   Surface Tilt =  90.000   Surface Azimuth (from North) = 260.000
-   Incidence Angle =  49.907
-
-  Diffuse irradiance ratios (tilted plane/horizontal):
-      0.5000  (isotropic approximate conversion--for reference)
-      0.9386  (anisotropic conversion model--used here)
->>>>>>> Stashed changes
+      0.8940  (isotropic approximate conversion--for reference)
+      0.5379  (anisotropic conversion model--used here)
 
 
 
 *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *
 
 ** SPECTRUM:
-<<<<<<< Updated upstream
-   Total (0-100 µm) Extraterrestrial Irradiance used here = 1322.77 W/m2
-  (i.e., 0.9676 times the selected solar constant, 1367.00 W/m2, due to the actual Sun-Earth distance.)
-=======
-   Total (0-100 µm) Extraterrestrial Irradiance used here = 1367.00 W/m2
-  (i.e., 1.0000 times the selected solar constant, 1367.00 W/m2, due to the actual Sun-Earth distance.)
->>>>>>> Stashed changes
+   Total (0-100 µm) Extraterrestrial Irradiance used here = 1323.49 W/m2
+  (i.e., 0.9682 times the selected solar constant, 1367.00 W/m2, due to the actual Sun-Earth distance.)
    Source for selected solar spectrum: Gueymard_2003                                                   
 
  To account for the chosen Solar Constant value, the selected solar spectrum has been uniformly multiplied
@@ -194,25 +136,13 @@ Wavelength Range =  280.0 to 4000.0 nm;  Number of Wavelengths =  2002
 *** BROADBAND IRRADIANCES (W/m2):
 
 * DIRECT BEAM AT NORMAL INCIDENCE:
-<<<<<<< Updated upstream
-  Extraterrestrial = 1305.27   Terrestrial =  713.12   Atmospheric Transmittance = 0.5463
+  Extraterrestrial = 1305.99   Terrestrial =  272.38   Atmospheric Transmittance = 0.2086
 
 * FOR THE HORIZONTAL PLANE:
-  Direct Beam =  608.64   Diffuse = 218.03   Global =  826.67   Clearness index, KT = 0.6250
+  Direct Beam =   34.28   Diffuse =  42.25   Global =   76.52   Clearness index, KT = 0.0578
   Diffuse irradiance origination details:
-   Sky diffuse = 197.71   Back-scattered diffuse =  20.33
+   Sky diffuse =  40.85   Back-scattered diffuse =   1.40
 
 * FOR THE TILTED PLANE: 
-  Direct Beam =  307.36   Sky Diffuse = 222.75   Ground Reflected =  82.67   Global =  530.11
-=======
-  Extraterrestrial = 1348.92   Terrestrial =  830.32   Atmospheric Transmittance = 0.6155
-
-* FOR THE HORIZONTAL PLANE:
-  Direct Beam =  494.77   Diffuse = 108.29   Global =  603.06   Clearness index, KT = 0.4412
-  Diffuse irradiance origination details:
-   Sky diffuse =  97.15   Back-scattered diffuse =  11.15
-
-* FOR THE TILTED PLANE: 
-  Direct Beam =  534.75   Sky Diffuse = 134.61   Ground Reflected =  60.31   Global =  669.36
->>>>>>> Stashed changes
+  Direct Beam =    0.00   Sky Diffuse =  28.37   Ground Reflected =   1.62   Global =   28.37
 
