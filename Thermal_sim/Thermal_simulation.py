@@ -54,7 +54,7 @@ def run_thermal_simulation():
 
     # 5. Define Parameters
     c_p_air = 1005      # Specific heat of air (J/kg.K)
-    rho_air = 1.225       # Density of air (kg/m3)
+    rho_air = 1.225     # Density of air (kg/m3)
     c_p_wat = 4184      # Specific heat of water (J/kg.K)
     rho_wat = 1000      # Density of water (kg/m3)
 

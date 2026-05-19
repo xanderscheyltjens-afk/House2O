@@ -983,7 +983,7 @@ def previous_main_file():
     print("Glass stole about: ", absorbed_power_total_glass, "W/m^2")
     print("The total absorbed power is: P_tot=", absorbed_power_total, "W/m^2")
 
-def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt=90, surface_azimuth=180, water_thickness=10, print_details=False): # The default date is VERY IMPORTANT ;)
+def general_use(LAT=51.222, LON=4.401, DATETIME="2024-06-27 15:00", surface_tilt=90, print_details=False): # The default date is VERY IMPORTANT ;)
     #------ Import data from PVGIS------------------------------
     # Generate the correct format for the date and time
     date, time = DATETIME.split(" ")
