@@ -174,7 +174,7 @@ def run_thermal_simulation():
     # Initial conditions (K),  Needs update.
     T_in[0] = 273.15 + 20
     T_wat[0] = 273.15 + 20
-    T_basin[0] = 273.15 + 20
+    T_basin[0] = 273.15 + 60
     T_ground[0] = 273.15 + 20
     T_floor[0] = 273.15 + 20
     T_iso[0] = 273.15 + 20
@@ -208,7 +208,7 @@ def run_thermal_simulation():
     T_setpoint = 273.15+23
     K_p = 0.2          
     K_i = 0.01
-    k_ff = 0.04
+    k_ff = 0.01
     # Initialisation error
     error = np.zeros(hours)
     integral = np.zeros(hours)
@@ -225,26 +225,26 @@ def run_thermal_simulation():
         u = max(-1.0, min(1.0, u_tot))
 
         #Then we do cooling methods, first pump more water to basin, then pump water to waterfall, finally close shutter
-        if u <= 0.4:
+        if u <= 0.1:
             floor_filled = False
             waterfall_on = False
             m_dot_floor_active = 0
             m_dot_basin_active = u*m_dot_pump_max
             m_dot_fa_active = 0
             P_sun = power_per_m2_series[i]
-        elif u > 0.4 and u <= 0.75:
+        elif u > 0.1 and u <= 0.5:
             floor_filled = False
             waterfall_on = True
             m_dot_floor_active = 0
             m_dot_basin_active = u*m_dot_pump_max
-            m_dot_fa_active = ((u-0.4)/0.6)*m_dot_pump_max
+            m_dot_fa_active = ((u-0.1)/0.9)*m_dot_pump_max
             P_sun = power_per_m2_series[i]
-        elif u >0.75:
+        elif u >0.5:
             floor_filled = False
             waterfall_on = True
             m_dot_floor_active = 0
             m_dot_basin_active = u*m_dot_pump_max
-            m_dot_fa_active = ((u-0.4)/0.6)*m_dot_pump_max
+            m_dot_fa_active = ((u-0.1)/0.9)*m_dot_pump_max
             P_sun = power_per_m2_series[i] * (273.15 + 30 - T_in[i])/10
         #If we're below T_setpoint we heat with the floor
         else:
