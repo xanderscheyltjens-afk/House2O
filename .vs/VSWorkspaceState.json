@@ -1,8 +1,10 @@
 {
   "ExpandedNodes": [
     "",
-    "\\Thermal_sim"
+    "\\Thermal_sim",
+    "\\Thermal_sim\\AttemptingSomething",
+    "\\Thermal_sim\\AttemptingSomething\\test_plots"
   ],
-  "SelectedNode": "\\Thermal_sim\\Thermal_simulation_updated_scheme.py",
+  "SelectedNode": "\\Thermal_sim\\AttemptingSomething\\test_thermal_simulation_final.png",
   "PreviewInSolutionExplorer": false
 }

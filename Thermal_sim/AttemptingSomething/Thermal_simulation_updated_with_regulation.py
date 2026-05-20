@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 def run_thermal_simulation():
     # 1. Load the TMY data
-    df_tmy = pd.read_csv(r'C:\Users\Matti\Documents\GitHub\House2O\House2O\tmy_51.222_4.401_2005_2023.csv') 
+    df_tmy = pd.read_csv(r"C:\Users\xande\OneDrive\Documents\GitHub\House2O\House2O\tmy_51.222_4.401_2005_2023.csv") 
     
     # Parse TMY time strings (Format: YYYYMMDD:HHMM)
     df_tmy['month'] = df_tmy['time(UTC)'].str[4:6].astype(int)
@@ -13,7 +13,7 @@ def run_thermal_simulation():
     df_tmy['hour'] = df_tmy['time(UTC)'].str[9:11].astype(int)
 
     # 2. Load the Spring Power Cache data
-    df_power = pd.read_csv(r'C:\Users\Matti\Documents\GitHub\House2O\Thermal_sim\AttemptingSomething\SpringDataOptimized_cache.csv') 
+    df_power = pd.read_csv(r'C:\Users\xande\OneDrive\Documents\GitHub\House2O\Thermal_sim\AttemptingSomething\SpringDataOptimized_cache.csv') 
         
     # Ensure date formats align for merging
     df_power['date_str'] = df_power['date'].astype(str)
@@ -95,7 +95,7 @@ def run_thermal_simulation():
     d_ground = 0.3 
     d_basin = 1 
     # added to accomodate for windows: 
-    d_glass = 0.05      # needs checking, pure assumption
+    d_glass = 0.05      # needs checking, pure assumption -> Xander: same as my code
     k_glass = 1.0       # needs checking (AI)
     d_stone = 0.05      # needs checking (AI) = stone thickness for the floor
     
@@ -142,9 +142,9 @@ def run_thermal_simulation():
     epsilon_stone = 0.95      # needs checking (AI) = emissivity of the stone floor
     # advection coefficients (W/m2.K)
     
-    # Pump capacities (This will need to go to a dynamic system.)
-    m_dot_pump = 33.33/3600  # Mass flow rate of cold water (kg/s) -> chose slowest setting from Anis' document on google drive
-    m_dot_floor = 33.33/3600
+    # Pump capacity (This will need to go to a dynamic system.) 
+    sub_iterations = 3600 # Sorry for placing it here, couldn't find logical spot
+    m_dot_pump_max = 10/sub_iterations  # Mass flow rate of cold water (kg/s) -> chose much lower than lowest setting from Anis' document on google drive
 
     # Constants for the waterfall
     L_v = 2.45e+6 # Latent heat, J/kg, found in 6.2
@@ -204,46 +204,94 @@ def run_thermal_simulation():
     prev_waterfall_on = False # initialization of the waterfall control logic
     waterfall_active = np.zeros(hours, dtype= bool) 
 
+    # Logic parameters for PID controller
+    T_setpoint = 273.15+23
+    K_p = 0.2          
+    K_i = 0.01
+    k_ff = 0.04
+    # Initialisation error
+    error = np.zeros(hours)
+    integral = np.zeros(hours)
     # 7. Simulation Loop (Euler Integration)
     for i in tqdm(range(hours - 1)):
         current_T_out = t_out_series[i] + 273.15 # Need kelvin for (T^4-T^4)
-        if T_in[i] > 273.15 + 30: 
-            P_sun = 0
-        elif T_in[i] > 273.15 + 20:
-            P_sun = power_per_m2_series[i] * (273.15 + 30 - T_in[i])/10
-        else:
-            # Calculate incoming power (W/m²) based on current hour
+        # Make PI(D) controller, since this is a slow system D will be unnnecessary
+        error[i] = T_in[i]-T_setpoint
+        integral[i] = sum(error)*dt
+        u_PID = K_p*error[i] #+K_i*integral[i]
+        u_out = k_ff*(current_T_out-T_setpoint)
+        u_tot = u_PID+u_out
+        # Clamp between -1 and 1 so easy scaling on all variables :)
+        u = max(-1.0, min(1.0, u_tot))
+
+        #Then we do cooling methods, first pump more water to basin, then pump water to waterfall, finally close shutter
+        if u <= 0.4:
+            floor_filled = False
+            waterfall_on = False
+            m_dot_floor_active = 0
+            m_dot_basin_active = u*m_dot_pump_max
+            m_dot_fa_active = 0
             P_sun = power_per_m2_series[i]
+        elif u > 0.4 and u <= 0.75:
+            floor_filled = False
+            waterfall_on = True
+            m_dot_floor_active = 0
+            m_dot_basin_active = u*m_dot_pump_max
+            m_dot_fa_active = ((u-0.4)/0.6)*m_dot_pump_max
+            P_sun = power_per_m2_series[i]
+        elif u >0.75:
+            floor_filled = False
+            waterfall_on = True
+            m_dot_floor_active = 0
+            m_dot_basin_active = u*m_dot_pump_max
+            m_dot_fa_active = ((u-0.4)/0.6)*m_dot_pump_max
+            P_sun = power_per_m2_series[i] * (273.15 + 30 - T_in[i])/10
+        #If we're below T_setpoint we heat with the floor
+        else:
+            floor_filled = True
+            waterfall_on = False
+            m_dot_floor_active = -1*u*m_dot_pump_max
+            m_dot_basin_active = 0
+            m_dot_fa_active = 0
+            P_sun = power_per_m2_series[i]
+
+        # if T_in[i] > 273.15 + 30: 
+        #     P_sun = 0
+        # elif T_in[i] > 273.15 + 20:
+        #     P_sun = power_per_m2_series[i] * (273.15 + 30 - T_in[i])/10
+        # else:
+        #     # Calculate incoming power (W/m²) based on current hour
+        #     P_sun = power_per_m2_series[i]
         
         P_sun_glass = power_glass_series[i] # Calculate power absorbed by the glass itself, which reduces the power reaching the interior
 
-        # (7b). Control logic (evaluated once per hour)
-        T_setpoint_low = 273.15 + 23
-        T_setpoint_high = 273.15 + 23
+        # # (7b). Control logic (evaluated once per hour)
+        # T_setpoint_low = 273.15 + 23
+        # T_setpoint_high = 273.15 + 23
 
-        too_cold = T_in[i] < T_setpoint_low
-        too_hot = T_in[i] > T_setpoint_high
+        # too_cold = T_in[i] < T_setpoint_low
+        # too_hot = T_in[i] > T_setpoint_high
         
-        comfortable = not too_cold and not too_hot
+        # comfortable = not too_cold and not too_hot
 
-        waterfall_on = too_hot
-        floor_drain_on = too_hot # drain the floor to prevent overheating
+        # waterfall_on = too_hot
+        # floor_drain_on = too_hot # drain the floor to prevent overheating
       
-        floor_heating_on = too_cold
-        floor_filled = not floor_drain_on 
+        # floor_heating_on = too_cold
+        # floor_filled = not floor_drain_on 
 
-        m_dot_floor_active = m_dot_floor if floor_heating_on else 0.0
-        m_dot_fa_active = m_dot_pump if waterfall_on else 0.0
+        # m_dot_floor_active = m_dot_floor if floor_heating_on else 0.0
+        # m_dot_fa_active = m_dot_pump if waterfall_on else 0.0
 
 
         if waterfall_on and not prev_waterfall_on:
-                    current_T_fa = current_T_basin
+                    current_T_fa = current_T_wat
         prev_waterfall_on = waterfall_on
         waterfall_active[i] = waterfall_on
 
 
         # Heat flows between compartments (Watts)
-        for _ in range(3600): # Sub-iterations for better stability
+        for _ in range(sub_iterations): # Sub-iterations for better stability
             # Calculations for the waterfall:
             # And gate evaporation
             if current_T_in < 293.15 or not waterfall_on:
@@ -270,8 +318,9 @@ def run_thermal_simulation():
                 k_glass / d_glass * (current_T_window2 - current_T_wat) + # from outer glass
                 k_glass / d_glass * (current_T_window1 - current_T_wat) # from inner glass
                 ) + (
-                m_dot_pump * c_p_wat * (current_T_basin - current_T_wat) )  # evap removed as it should only be in the waterfall equation
-
+                m_dot_basin_active * c_p_wat * (current_T_basin - current_T_wat) # evap removed as it should only be in the waterfall equation
+                ) 
+   
             
             dT_window1 = A_collector * (
                 k_glass / d_glass * (current_T_wat - current_T_window1) + # from water
@@ -336,7 +385,7 @@ def run_thermal_simulation():
             
             dT_ground = k_ground * A_ground / d_ground * (current_T_iso + current_T_basin - 2 * current_T_ground)
 
-            dT_basin = m_dot_pump * c_p_wat * (current_T_wat - current_T_basin) +\
+            dT_basin = m_dot_basin_active * c_p_wat * (current_T_wat - current_T_basin) +\
                 m_dot_floor_active * c_p_wat * (current_T_floor - current_T_basin) +\
                 m_dot_fa_active * c_p_wat * (current_T_fa - current_T_basin) +\
                 k_ground * A_basin / d_basin * (current_T_ground - current_T_basin) 
@@ -400,6 +449,7 @@ def run_thermal_simulation():
     
     avg_out = np.mean(t_out_series)
     avg_diff = np.mean(T_in - t_out_series)
+    avg_err = np.mean(error)
     
     # Calculate Average Daily Swing
     daily_swings = []
@@ -419,6 +469,7 @@ def run_thermal_simulation():
     print(f"Temperature Stability (σ):{std_dev:.2f} °C")
     print(f"Average Outside Temp:     {avg_out:.2f} °C")
     print(f"Avg Diff (Inside vs Out): +{avg_diff:.2f} °C")
+    print(f"Avg Error (missed setpoint of {T_setpoint-273.15:.2f}°C by): {avg_err:.2f} °C")
     print("------------------------------------\n")
 
     # 9. Plot the results with interactive checkboxes
@@ -501,8 +552,9 @@ def run_thermal_simulation():
 
     check.on_clicked(toggle_visibility)
 
-    plt.savefig(r'C:\Users\Matti\Documents\GitHub\House2O\Thermal_sim\AttemptingSomething\thermal_simulation_final.png')
+    plt.savefig(r'C:\Users\xande\OneDrive\Documents\GitHub\House2O\Thermal_sim\AttemptingSomething\thermal_simulation_final.png')
     plt.show()
-
+    plt.plot(error)
+    plt.show()
 if __name__ == "__main__":
     run_thermal_simulation()
