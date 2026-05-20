@@ -3,8 +3,9 @@
     "",
     "\\Thermal_sim",
     "\\Thermal_sim\\AttemptingSomething",
-    "\\Thermal_sim\\AttemptingSomething\\test_plots"
+    "\\Thermal_sim\\AttemptingSomething\\test_plots",
+    "\\Thermal_sim\\Xander_shitty_code"
   ],
-  "SelectedNode": "\\Thermal_sim\\AttemptingSomething\\Thermal_simulation_updated_with_regulation.py",
+  "SelectedNode": "\\Thermal_sim\\Xander_shitty_code\\Thermal_simulation_PID.py",
   "PreviewInSolutionExplorer": false
 }
