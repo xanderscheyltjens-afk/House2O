@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm 
+from scipy.integrate import solve_ivp
 
 def run_thermal_simulation():
     # 1. Load the TMY data
@@ -144,7 +145,7 @@ def run_thermal_simulation():
     
     # Pump capacity (This will need to go to a dynamic system.) 
     sub_iterations = 3600 # Sorry for placing it here, couldn't find logical spot
-    m_dot_pump_max = 10/sub_iterations  # Mass flow rate of cold water (kg/s) -> chose much lower than lowest setting from Anis' document on google drive
+    m_dot_pump_max = 7000/sub_iterations  # Mass flow rate of cold water (kg/s) -> chose much lower than lowest setting from Anis' document on google drive
 
     # Constants for the waterfall
     L_v = 2.45e+6 # Latent heat, J/kg, found in 6.2
@@ -153,6 +154,11 @@ def run_thermal_simulation():
     A_ant = 8.07131 # Constant A in Antoine equation, found in 6.2
     B_ant = 1730.63 # Constant B in Antoine equation, found in 6.2
     C_ant = 233.426 - 273.15 # Constant C in Antoine equation, found in 6.2, convert for use with Kelvin
+
+    # For readability in the code later
+    I_IN, I_WAT, I_BASIN, I_GROUND, I_FLOOR, I_ISO, I_FA, \
+    I_WALLS1, I_WALLS2, I_WINDOW1, I_WINDOW2, I_STONE = range(12)
+    N_STATES = 12
 
     # 6. Simulation Setup
     dt = 3600  # Time step = 1 hour
@@ -171,255 +177,234 @@ def run_thermal_simulation():
     # added stone floor
     T_stone = np.zeros(hours)
 
-    # Initial conditions (K),  Needs update.
-    T_in[0] = 273.15 + 20
-    T_wat[0] = 273.15 + 20
-    T_basin[0] = 273.15 + 60
-    T_ground[0] = 273.15 + 20
-    T_floor[0] = 273.15 + 20
-    T_iso[0] = 273.15 + 20
-    T_fa[0] = 273.15 + 20
-    T_walls1[0] = 273.15 + 20
-    T_walls2[0] = 273.15 + 20
-    # add inside and outside windows
-    T_window1[0] = 273.15 + 20
-    T_window2[0] = 273.15 + 20
-    # add stone floor
-    T_stone[0] = 273.15 + 20
+        # Initial conditions (K)
+    y0_global = np.zeros(N_STATES)
+    y0_global[I_IN]      = 273.15 + 23
+    y0_global[I_WAT]     = 273.15 + 23
+    y0_global[I_BASIN]   = 273.15 + 23
+    y0_global[I_GROUND]  = 273.15 + 23
+    y0_global[I_FLOOR]   = 273.15 + 23
+    y0_global[I_ISO]     = 273.15 + 23
+    y0_global[I_FA]      = 273.15 + 23
+    y0_global[I_WALLS1]  = 273.15 + 23
+    y0_global[I_WALLS2]  = 273.15 + 23
+    y0_global[I_WINDOW1] = 273.15 + 23
+    y0_global[I_WINDOW2] = 273.15 + 23
+    y0_global[I_STONE]   = 273.15 + 23
+ 
+    # Write initial conditions into storage
+    T_in[0]      = y0_global[I_IN]
+    T_wat[0]     = y0_global[I_WAT]
+    T_basin[0]   = y0_global[I_BASIN]
+    T_ground[0]  = y0_global[I_GROUND]
+    T_floor[0]   = y0_global[I_FLOOR]
+    T_iso[0]     = y0_global[I_ISO]
+    T_fa[0]      = y0_global[I_FA]
+    T_walls1[0]  = y0_global[I_WALLS1]
+    T_walls2[0]  = y0_global[I_WALLS2]
+    T_window1[0] = y0_global[I_WINDOW1]
+    T_window2[0] = y0_global[I_WINDOW2]
+    T_stone[0]   = y0_global[I_STONE]
+ 
+    prev_waterfall_on = False
+    waterfall_active = np.zeros(hours, dtype=bool)
 
-
-    current_T_in = T_in[0]
-    current_T_wat = T_wat[0]
-    current_T_basin = T_basin[0]
-    current_T_ground = T_ground[0]
-    current_T_floor = T_floor[0]
-    current_T_iso = T_iso[0]
-    current_T_fa = T_fa[0]
-    current_T_walls1 = T_walls1[0]
-    current_T_walls2 = T_walls2[0]
-    # same here
-    current_T_window1 = T_window1[0]
-    current_T_window2 = T_window2[0]
-    current_T_stone = T_stone[0]
-    prev_waterfall_on = False # initialization of the waterfall control logic
-    waterfall_active = np.zeros(hours, dtype= bool) 
-
-    # Logic parameters for PID controller
-    T_setpoint = 273.15+23
-    K_p = 0.2          
-    K_i = 0.01
-    k_ff = 0.01
-    # Initialisation error
-    error = np.zeros(hours)
-    integral = np.zeros(hours)
     # 7. Simulation Loop (Euler Integration)
+    y0 = y0_global.copy()
     for i in tqdm(range(hours - 1)):
         current_T_out = t_out_series[i] + 273.15 # Need kelvin for (T^4-T^4)
-        # Make PI(D) controller, since this is a slow system D will be unnnecessary
-        error[i] = T_in[i]-T_setpoint
-        integral[i] = sum(error)*dt
-        u_PID = K_p*error[i] #+K_i*integral[i]
-        u_out = k_ff*(current_T_out-T_setpoint)
-        u_tot = u_PID+u_out
-        # Clamp between -1 and 1 so easy scaling on all variables :)
-        u = max(-1.0, min(1.0, u_tot))
 
-        #Then we do cooling methods, first pump more water to basin, then pump water to waterfall, finally close shutter
-        if u <= 0.1:
-            floor_filled = False
-            waterfall_on = False
-            m_dot_floor_active = 0
-            m_dot_basin_active = u*m_dot_pump_max
-            m_dot_fa_active = 0
-            P_sun = power_per_m2_series[i]
-        elif u > 0.1 and u <= 0.5:
-            floor_filled = False
-            waterfall_on = True
-            m_dot_floor_active = 0
-            m_dot_basin_active = u*m_dot_pump_max
-            m_dot_fa_active = ((u-0.1)/0.9)*m_dot_pump_max
-            P_sun = power_per_m2_series[i]
-        elif u >0.5:
-            floor_filled = False
-            waterfall_on = True
-            m_dot_floor_active = 0
-            m_dot_basin_active = u*m_dot_pump_max
-            m_dot_fa_active = ((u-0.1)/0.9)*m_dot_pump_max
+        if T_in[i] > 273.15 + 30: 
+            P_sun = 0
+        elif T_in[i] > 273.15 + 20:
             P_sun = power_per_m2_series[i] * (273.15 + 30 - T_in[i])/10
-        #If we're below T_setpoint we heat with the floor
         else:
-            floor_filled = True
-            waterfall_on = False
-            m_dot_floor_active = -1*u*m_dot_pump_max
-            m_dot_basin_active = 0
-            m_dot_fa_active = 0
+            # Calculate incoming power (W/m²) based on current hour
             P_sun = power_per_m2_series[i]
-
-        # if T_in[i] > 273.15 + 30: 
-        #     P_sun = 0
-        # elif T_in[i] > 273.15 + 20:
-        #     P_sun = power_per_m2_series[i] * (273.15 + 30 - T_in[i])/10
-        # else:
-        #     # Calculate incoming power (W/m²) based on current hour
-        #     P_sun = power_per_m2_series[i]
         
         P_sun_glass = power_glass_series[i] # Calculate power absorbed by the glass itself, which reduces the power reaching the interior
 
-        # # (7b). Control logic (evaluated once per hour)
-        # T_setpoint_low = 273.15 + 23
-        # T_setpoint_high = 273.15 + 23
+        # (7b). Control logic (evaluated once per hour)
+        T_setpoint_low = 273.15 + 23
+        T_setpoint_high = 273.15 + 23
 
-        # too_cold = T_in[i] < T_setpoint_low
-        # too_hot = T_in[i] > T_setpoint_high
+        too_cold = T_in[i] < T_setpoint_low
+        too_hot = T_in[i] > T_setpoint_high
         
-        # comfortable = not too_cold and not too_hot
+        comfortable = not too_cold and not too_hot
 
-        # waterfall_on = too_hot
-        # floor_drain_on = too_hot # drain the floor to prevent overheating
+        waterfall_on = too_hot
+        floor_drain_on = too_hot # drain the floor to prevent overheating
       
-        # floor_heating_on = too_cold
-        # floor_filled = not floor_drain_on 
+        floor_heating_on = too_cold
+        floor_filled = not floor_drain_on 
 
-        # m_dot_floor_active = m_dot_floor if floor_heating_on else 0.0
-        # m_dot_fa_active = m_dot_pump if waterfall_on else 0.0
-
-
+        m_dot_floor_active = m_dot_pump_max if floor_heating_on else 0.0
+        m_dot_fa_active = m_dot_pump_max if waterfall_on else 0.0
+        m_dot_basin_active = m_dot_pump_max if too_hot else 0.0
         if waterfall_on and not prev_waterfall_on:
-                    current_T_fa = current_T_wat
+                    T_fa[i] = T_basin[i]
         prev_waterfall_on = waterfall_on
         waterfall_active[i] = waterfall_on
 
-
-        # Heat flows between compartments (Watts)
-        for _ in range(sub_iterations): # Sub-iterations for better stability
-            # Calculations for the waterfall:
-            # And gate evaporation
-            if current_T_in < 293.15 or not waterfall_on:
-                m_dot_evap = 0
-            else:
-                p_sat_fa = (10**(A_ant - (B_ant / (C_ant+current_T_fa)))) * 133.322  #Antoines formula, 133.322 converts mmhg -> Pa
-                p_sat_in = (10**(A_ant - (B_ant / (C_ant+current_T_in)))) * 133.322  #Antoines formula, 133.322 converts mmhg -> Pa
-                c_fa = p_sat_fa * M_water / (R * current_T_fa) # Ideal gas law waterfall
-                c_in = p_sat_in * M_water / (R * current_T_in) # Ideal gas law room
-                m_dot_evap = h_fa * A_fa * (c_fa - c_in)/ (rho_air * c_p_air)
-                
-            # Temperature changes
-            # new: change in temperature for the outside window
+        # --- ODE system ---------------------------------------------------------------------------------
+        def system(t, y):
+            T_in_     = y[I_IN]
+            T_wat_    = y[I_WAT]
+            T_basin_  = y[I_BASIN]
+            T_ground_ = y[I_GROUND]
+            T_floor_  = y[I_FLOOR]
+            T_iso_    = y[I_ISO]
+            T_fa_     = y[I_FA]
+            T_walls1_ = y[I_WALLS1]
+            T_walls2_ = y[I_WALLS2]
+            T_win1_   = y[I_WINDOW1]
+            T_win2_   = y[I_WINDOW2]
+            T_stone_  = y[I_STONE]
+ 
+            # Evaporation
+            p_sat_fa = (10 ** (A_ant - (B_ant / (C_ant + T_fa_)))) * 133.322
+            p_sat_in = (10 ** (A_ant - (B_ant / (C_ant + T_in_)))) * 133.322
+            c_fa     = p_sat_fa * M_water / (R * T_fa_)
+            c_in     = p_sat_in * M_water / (R * T_in_)
+            m_dot_evap = waterfall_on*h_fa * A_fa * (c_fa - c_in) / (rho_air * c_p_air)
+ 
             dT_window2 = A_collector * (
                 P_sun_glass +
-                h_out * (current_T_out - current_T_window2) +
-                sigma * epsilon_window2_out * (current_T_out**4 - current_T_window2**4) +
-                k_glass / d_glass * (current_T_wat - current_T_window2)
-                )
-
-
-            dT_wat = A_collector * (
-                P_sun + 
-                k_glass / d_glass * (current_T_window2 - current_T_wat) + # from outer glass
-                k_glass / d_glass * (current_T_window1 - current_T_wat) # from inner glass
-                ) + (
-                m_dot_basin_active * c_p_wat * (current_T_basin - current_T_wat) # evap removed as it should only be in the waterfall equation
-                ) 
-   
-            
+                h_out * (current_T_out - T_win2_) +
+                sigma * epsilon_window2_out * (current_T_out**4 - T_win2_**4) +
+                k_glass / d_glass * (T_wat_ - T_win2_)
+            ) / C_window2
+ 
+            dT_wat = (
+                A_collector * (
+                    P_sun +
+                    k_glass / d_glass * (T_win2_ - T_wat_) +
+                    k_glass / d_glass * (T_win1_ - T_wat_)
+                ) +
+                m_dot_basin_active * c_p_wat * (T_basin_ - T_wat_)
+            ) / C_wat
+ 
             dT_window1 = A_collector * (
-                k_glass / d_glass * (current_T_wat - current_T_window1) + # from water
-                h_in * (current_T_in - current_T_window1) + # from inside air
-                sigma * epsilon_window1_in * (current_T_in**4 - current_T_window1**4) # radiation from inside air
-            )
-
-            dT_in = A_in_wat * (
-                h_in * (current_T_window1 - current_T_in) +
-                sigma * epsilon_window1_in * (current_T_window1**4 - current_T_in**4)) \
-                + A_fa * (
-                h_fa * (current_T_fa - current_T_in) +
-                sigma * epsilon_fa * (current_T_fa**4 - current_T_in**4))\
-                + A_walls1 * (
-                h_walls1 * (current_T_walls1 - current_T_in) +
-                sigma * epsilon_walls1 * (current_T_walls1**4 - current_T_in**4))\
-                + A_stone * (
-                h_stone * (current_T_stone - current_T_in) +
-                sigma * epsilon_stone * (current_T_stone**4 - current_T_in**4)    
+                k_glass / d_glass * (T_wat_ - T_win1_) +
+                h_in * (T_in_ - T_win1_) +
+                sigma * epsilon_window1_in * (T_in_**4 - T_win1_**4)
+            ) / C_window1
+ 
+            dT_in = (
+                A_in_wat * (
+                    h_in * (T_win1_ - T_in_) +
+                    sigma * epsilon_window1_in * (T_win1_**4 - T_in_**4)
+                ) +
+                A_fa * (
+                    h_fa * (T_fa_ - T_in_) +
+                    sigma * epsilon_fa * (T_fa_**4 - T_in_**4)
+                ) +
+                A_walls1 * (
+                    h_walls1 * (T_walls1_ - T_in_) +
+                    sigma * epsilon_walls1 * (T_walls1_**4 - T_in_**4)
+                ) +
+                A_stone * (
+                    h_stone * (T_stone_ - T_in_) +
+                    sigma * epsilon_stone * (T_stone_**4 - T_in_**4)
                 )
-            
+            ) / C_in
+ 
             dT_walls1 = A_walls1 * (
-                h_walls1 * (current_T_in - current_T_walls1) +
-                sigma * epsilon_walls1 * (current_T_in**4 - current_T_walls1**4) +
-                k_walls1 / d_walls1 * (current_T_in - current_T_walls1) +
-                k_wiso / d_wiso * (current_T_walls2 - current_T_walls1)
-            )
-
+                h_walls1 * (T_in_ - T_walls1_) +
+                sigma * epsilon_walls1 * (T_in_**4 - T_walls1_**4) +
+                k_walls1 / d_walls1 * (T_in_ - T_walls1_) +
+                k_wiso / d_wiso * (T_walls2_ - T_walls1_)
+            ) / C_walls1
+ 
             dT_walls2 = A_walls2 * (
-                h_walls2 * (current_T_out - current_T_walls2) +
-                sigma * epsilon_walls2 * (current_T_out**4 - current_T_walls2**4) +
-                k_walls2 / d_walls2 * (current_T_out - current_T_walls2) +
-                k_wiso / d_wiso * (current_T_walls1 - current_T_walls2)
-            )
-
-            # Adjusted to only use when it's too hot
-            dT_fa = m_dot_fa_active * c_p_wat * (current_T_basin - current_T_fa) +\
-                waterfall_on * (h_fa * A_fa * (current_T_in - current_T_fa) +\
-                sigma * epsilon_fa * (current_T_in**4 - current_T_fa**4)) +\
-                - m_dot_evap * L_v
-            
-
-            # stone layer to conduct heat from water underneath and convect and radiate to the room above
+                h_walls2 * (current_T_out - T_walls2_) +
+                sigma * epsilon_walls2 * (current_T_out**4 - T_walls2_**4) +
+                k_walls2 / d_walls2 * (current_T_out - T_walls2_) +
+                k_wiso / d_wiso * (T_walls1_ - T_walls2_)
+            ) / C_walls2
+ 
+            dT_fa = (
+                m_dot_fa_active * c_p_wat * (T_basin_ - T_fa_) +
+                waterfall_on * (
+                    h_fa * A_fa * (T_in_ - T_fa_) +
+                    sigma * epsilon_fa * (T_in_**4 - T_fa_**4)
+                ) -
+                m_dot_evap * L_v
+            ) / C_fa
+ 
             dT_stone = A_stone * (
-                k_stone / d_stone * (current_T_floor - current_T_stone) * floor_filled + # conduction from water below
-                h_stone * (current_T_in - current_T_stone) + # convection from stone to air
-                sigma * epsilon_stone * (current_T_in**4 - current_T_stone**4) # radiation from floor
-            )
-
-            # only activate active floor heating when the pump is on.
+                k_stone / d_stone * (T_floor_ - T_stone_) * floor_filled +
+                h_stone * (T_in_ - T_stone_) +
+                sigma * epsilon_stone * (T_in_**4 - T_stone_**4)
+            ) / C_stone
+ 
+           
+             # only activate active floor heating when the pump is on.
             if floor_filled:        
-                dT_floor = m_dot_floor_active * c_p_wat * (current_T_basin - current_T_floor) +\
+                dT_floor = m_dot_floor_active * c_p_wat * (T_basin_ - T_floor_) +\
                     A_floor * (
-                    k_stone / d_stone * (current_T_stone - current_T_floor) + # conduction to stone layer
-                    k_iso / d_iso * (current_T_iso - current_T_floor) )# conduction to isolation layer
+                    k_stone / d_stone * (T_stone_ - T_floor_) + # conduction to stone layer
+                    k_iso / d_iso * (T_iso_ - T_floor_) )# conduction to isolation layer
             else:
-                current_T_floor = current_T_stone
+                T_floor_ = T_stone_
                 dT_floor = 0
+ 
+            dT_iso = k_iso * A_iso / d_iso * (T_floor_ + T_ground_ - 2 * T_iso_) / C_iso
+ 
+            dT_ground = k_ground * A_ground / d_ground * (T_iso_ + T_basin_ - 2 * T_ground_) / C_ground
+ 
+            dT_basin = (
+                m_dot_basin_active  * c_p_wat * (T_wat_   - T_basin_) +
+                m_dot_floor_active  * c_p_wat * (T_floor_ - T_basin_) +
+                m_dot_fa_active     * c_p_wat * (T_fa_    - T_basin_) +
+                k_ground * A_basin / d_basin * (T_ground_ - T_basin_)
+            ) / C_basin
+ 
+            dydt = np.zeros(N_STATES)
+            dydt[I_IN]      = dT_in
+            dydt[I_WAT]     = dT_wat
+            dydt[I_BASIN]   = dT_basin
+            dydt[I_GROUND]  = dT_ground
+            dydt[I_FLOOR]   = dT_floor
+            dydt[I_ISO]     = dT_iso
+            dydt[I_FA]      = dT_fa
+            dydt[I_WALLS1]  = dT_walls1
+            dydt[I_WALLS2]  = dT_walls2
+            dydt[I_WINDOW1] = dT_window1
+            dydt[I_WINDOW2] = dT_window2
+            dydt[I_STONE]   = dT_stone
+            return dydt
+ 
+        # --- Solve for this hour with the stiff Radau solver ---
+        sol = solve_ivp(
+            system,
+            t_span=[0, sub_iterations],
+            y0=y0,
+            method='Radau',   # implicit solver, handles stiff systems
+            rtol=1e-4,        # loosen tolerances slightly for speed; tighten if needed
+            atol=1e-3,
+        )
+ 
+        if not sol.success:
+            print(f"Warning: solver failed at hour {i}: {sol.message}")
+ 
+        y0 = sol.y[:, -1]   # end-of-hour state becomes next hour's initial condition
+ 
+        # Store results
+        T_in[i+1]      = y0[I_IN]
+        T_wat[i+1]     = y0[I_WAT]
+        T_basin[i+1]   = y0[I_BASIN]
+        T_ground[i+1]  = y0[I_GROUND]
+        T_floor[i+1]   = y0[I_FLOOR]
+        T_iso[i+1]     = y0[I_ISO]
+        T_fa[i+1]      = y0[I_FA]
+        T_walls1[i+1]  = y0[I_WALLS1]
+        T_walls2[i+1]  = y0[I_WALLS2]
+        T_window1[i+1] = y0[I_WINDOW1]
+        T_window2[i+1] = y0[I_WINDOW2]
+        T_stone[i+1]   = y0[I_STONE]
 
-
-            dT_iso = k_iso * A_iso / d_iso * (current_T_floor + current_T_ground - 2 * current_T_iso)
-            
-            dT_ground = k_ground * A_ground / d_ground * (current_T_iso + current_T_basin - 2 * current_T_ground)
-
-            dT_basin = m_dot_basin_active * c_p_wat * (current_T_wat - current_T_basin) +\
-                m_dot_floor_active * c_p_wat * (current_T_floor - current_T_basin) +\
-                m_dot_fa_active * c_p_wat * (current_T_fa - current_T_basin) +\
-                k_ground * A_basin / d_basin * (current_T_ground - current_T_basin) 
-
-
-            current_T_wat += dT_wat * dt / (C_wat * 3600)
-            current_T_in += dT_in * dt / (C_in * 3600)
-            current_T_floor += dT_floor * dt / (C_floor * 3600)
-            current_T_basin += dT_basin * dt / (C_basin * 3600)
-            current_T_ground += dT_ground * dt / (C_ground * 3600)
-            current_T_iso += dT_iso * dt / (C_iso * 3600)
-            current_T_fa += dT_fa * dt / (C_fa * 3600)
-            current_T_walls1 += dT_walls1 * dt / (C_walls1 * 3600)
-            current_T_walls2 += dT_walls2 * dt / (C_walls2 * 3600)
-
-            current_T_window1 += dT_window1 * dt / (C_window1 * 3600) # update C
-            current_T_window2 += dT_window2 * dt / (C_window2 * 3600) # 
-
-            current_T_stone += dT_stone *dt / (C_stone * 3600) # update for stone layer
-        
-        T_in[i+1] = current_T_in
-        T_wat[i+1] = current_T_wat
-        T_floor[i+1] = current_T_floor
-        T_basin[i+1] = current_T_basin
-        T_ground[i+1] = current_T_ground
-        T_iso[i+1] = current_T_iso
-        T_fa[i+1] = current_T_fa
-        T_walls1[i+1] = current_T_walls1
-        T_walls2[i+1] = current_T_walls2
-
-        T_window1[i+1] = current_T_window1
-        T_window2[i+1] = current_T_window2
-
-        T_stone[i+1] = current_T_stone
 
     #
     # Restore temperatures to Celsius 
@@ -449,7 +434,6 @@ def run_thermal_simulation():
     
     avg_out = np.mean(t_out_series)
     avg_diff = np.mean(T_in - t_out_series)
-    avg_err = np.mean(error)
     
     # Calculate Average Daily Swing
     daily_swings = []
@@ -469,7 +453,6 @@ def run_thermal_simulation():
     print(f"Temperature Stability (σ):{std_dev:.2f} °C")
     print(f"Average Outside Temp:     {avg_out:.2f} °C")
     print(f"Avg Diff (Inside vs Out): +{avg_diff:.2f} °C")
-    print(f"Avg Error (missed setpoint of {T_setpoint-273.15:.2f}°C by): {avg_err:.2f} °C")
     print("------------------------------------\n")
 
     # 9. Plot the results with interactive checkboxes
@@ -553,8 +536,6 @@ def run_thermal_simulation():
     check.on_clicked(toggle_visibility)
 
     plt.savefig(r'C:\Users\xande\OneDrive\Documents\GitHub\House2O\Thermal_sim\AttemptingSomething\thermal_simulation_final.png')
-    plt.show()
-    plt.plot(error)
     plt.show()
 if __name__ == "__main__":
     run_thermal_simulation()
